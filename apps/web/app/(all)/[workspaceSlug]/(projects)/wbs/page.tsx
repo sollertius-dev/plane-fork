@@ -5,7 +5,7 @@
  */
 
 import { PageHead } from "@/components/core/page-title";
-import { WbsRoot } from "@/components/wbs/wbs-root";
+import { WbsRoot } from "@/components/wbs/wbs-page";
 import type { Route } from "./+types/page";
 
 function WbsPage({ params }: Route.ComponentProps) {
