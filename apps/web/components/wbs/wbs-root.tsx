@@ -9,6 +9,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "@plane/utils";
 import { wbsApi } from "./api";
 import { EditableCell } from "./editable-cell";
+import { HScrollBar } from "./h-scroll-bar";
 import { IssueLinks } from "./issue-links";
 import { buildTimeline, dayOfMonth, DAY_PX, fmtDate, mondayOnOrBefore, monthKey, monthLabel, toDay, WEEK_PX, xOf } from "./timeline";
 import type { TStatusGroup, TWbsNode, TWbsPhase, TWbsRow } from "./types";
@@ -77,7 +78,7 @@ const Chevron = ({ open }: { open: boolean }) => (
   </svg>
 );
 
-export function WbsRoot({ slug }: { slug: string }) {
+export function WbsSchedule({ slug }: { slug: string }) {
   const { tree, error, loading, run, clearError } = useWbs(slug);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [compact, setCompact] = useState(false);
@@ -100,6 +101,7 @@ export function WbsRoot({ slug }: { slug: string }) {
   const leftW = compact ? COL.name : COL.name + DETAIL_W;
   const canWrite = !!tree?.can_write;
 
+  const scrollByWeeks = (w: number) => scroller.current?.scrollBy({ left: w * WEEK_PX, behavior: "smooth" });
   const scrollToToday = () => {
     const el = scroller.current;
     if (el) el.scrollTo({ left: Math.max(0, xOf(tl, today) - 160), behavior: "smooth" });
@@ -195,7 +197,9 @@ export function WbsRoot({ slug }: { slug: string }) {
         </span>
         {canWrite ? <button type="button" className={btn} onClick={addPhase}>+ Phase</button> : null}
         {canWrite ? <button type="button" className={btn} onClick={() => setMsForm(msForm ? null : { name: "", day: tree.today })}>+ Milestone</button> : null}
+        <button type="button" className={btn} onClick={() => scrollByWeeks(-6)} title="Move the timeline 6 weeks back" aria-label="Timeline back">◀</button>
         <button type="button" className={btn} onClick={scrollToToday}>Today</button>
+        <button type="button" className={btn} onClick={() => scrollByWeeks(6)} title="Move the timeline 6 weeks forward" aria-label="Timeline forward">▶</button>
         <button type="button" className={btn} onClick={() => setCollapsed(collapsed.size ? new Set() : new Set(allParents))}>{collapsed.size ? "Expand all" : "Collapse all"}</button>
         <button type="button" className={btn} onClick={() => setCompact((v) => !v)}>{compact ? "Show details" : "Hide details"}</button>
         {msForm ? (
@@ -345,6 +349,7 @@ export function WbsRoot({ slug }: { slug: string }) {
           </div>
         </div>
       </div>
+      <HScrollBar target={scroller} step={WEEK_PX * 6} />
     </div>
   );
 }
