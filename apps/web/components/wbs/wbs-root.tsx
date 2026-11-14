@@ -15,7 +15,7 @@ import type { TStatusGroup, TWbsNode, TWbsPhase, TWbsRow } from "./types";
 import { useWbs } from "./use-wbs";
 
 // Column widths of the table part (px). The Gantt part scrolls next to it.
-const COL = { name: 300, manDay: 66, effort: 58, lead: 58, start: 106, who: 120, status: 104 };
+const COL = { name: 340, manDay: 66, effort: 58, lead: 58, start: 106, who: 120, status: 104 };
 const DETAIL_W = COL.manDay + COL.effort + COL.lead + COL.start + COL.who + COL.status;
 const ROW_H = { phase: 38, epic: 34, touchpoint: 34 } as const;
 const HEAD_H = 72; // months + weeks + milestone flags
@@ -274,7 +274,7 @@ export function WbsRoot({ slug }: { slug: string }) {
                 <div key={row.id} className="group flex border-b border-subtle" style={{ height: ROW_H[row.kind] }}>
                   <div className={cn("sticky left-0 z-10 flex flex-shrink-0 items-center border-r border-subtle group-hover:bg-layer-1", row.kind === "phase" ? "bg-layer-1" : "bg-surface-1")} style={{ width: leftW }}>
                     {/* name */}
-                    <div className="relative flex h-full flex-shrink-0 items-center gap-1 overflow-hidden pr-1" style={{ width: COL.name, paddingLeft: 8 + row.depth * 18 }}>
+                    <div className="relative flex h-full flex-shrink-0 items-center gap-1 overflow-hidden" style={{ width: COL.name, paddingLeft: 8 + row.depth * 18, paddingRight: canWrite ? 58 : 4 }}>
                       {row.childCount > 0 || row.kind !== "touchpoint" ? (
                         <button type="button" onClick={() => toggle(row.id)} className="flex size-5 flex-shrink-0 items-center justify-center rounded-sm text-tertiary hover:bg-layer-2 hover:text-primary" aria-label="Expand or collapse">
                           <Chevron open={!collapsed.has(row.id)} />
