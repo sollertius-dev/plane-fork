@@ -76,7 +76,7 @@ export function WbsGuideline() {
         <H>Moving along the timeline</H>
         <ul className="mb-2 ml-5 list-disc">
           <Li>The bar at the bottom of the screen is the scroll bar: drag the thumb, click the track to move a page, or use ◀ ▶ at its ends.</Li>
-          <Li>The ◀ ▶ buttons in the toolbar move the timeline by six weeks. <B>Today</B> brings the red line back into view.</Li>
+          <Li>The ◀ ▶ buttons at the two ends of the timeline header move it by six weeks. <B>Today</B> in the toolbar brings the red line back into view.</Li>
           <Li>A trackpad or Shift + mouse wheel also scrolls sideways.</Li>
         </ul>
 
