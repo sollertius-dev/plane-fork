@@ -8,6 +8,14 @@
 
 export type TStatusGroup = "backlog" | "unstarted" | "started" | "completed" | "cancelled" | null;
 
+export type TWbsIssue = {
+  id: string;
+  ref: string; // e.g. PFD-3
+  name: string;
+  status: string | null;
+  status_group: TStatusGroup;
+};
+
 export type TWbsNode = {
   id: string;
   title: string;
@@ -16,10 +24,9 @@ export type TWbsNode = {
   lead_days: number; // calendar days = ceil(man_day / effort)
   start: string | null; // ISO date
   end: string | null;
-  issue_id: string | null;
-  issue_ref: string | null; // e.g. PFD-3
-  issue_name: string | null;
-  status: string | null;
+  issues: TWbsIssue[]; // linked Plane work items (many per node)
+  issues_done: number;
+  status: string | null; // derived from the linked work items
   status_group: TStatusGroup;
   assignees: string | null;
   rolled?: boolean; // true when the values are the roll-up of the children
