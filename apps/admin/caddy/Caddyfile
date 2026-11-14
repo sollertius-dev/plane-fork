@@ -10,10 +10,11 @@
 	root * /usr/share/caddy/html
 
 	# Per-client-IP rate limiting for static asset requests
+	# Sollertius patch: upstream limit was 300/min, which one cold page load exceeds
 	rate_limit {
 		zone static {
 			key {client_ip}
-			events 300
+			events 12000
 			window 1m
 		}
 	}
