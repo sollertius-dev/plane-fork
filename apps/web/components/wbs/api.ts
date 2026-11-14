@@ -6,8 +6,8 @@
 
 import type { TWbsMilestone, TWbsTree } from "./types";
 
-// The WBS API is served by the proxy under the same origin, so the Plane session cookie travels with every call.
-const base = (slug: string) => `/wbs-api/${encodeURIComponent(slug)}`;
+// The WBS endpoints are part of the Plane API (same origin), so the session cookie travels with every call.
+const base = (slug: string) => `/api/workspaces/${encodeURIComponent(slug)}/wbs`;
 
 async function call<T>(method: string, url: string, body?: unknown): Promise<T> {
   const res = await fetch(url, {
@@ -26,6 +26,7 @@ async function call<T>(method: string, url: string, body?: unknown): Promise<T> 
     }
     throw new Error(detail || `HTTP ${res.status}`);
   }
+  if (res.status === 204) return undefined as T;
   return (await res.json()) as T;
 }
 
@@ -33,27 +34,29 @@ export type TNodePatch = Partial<{
   title: string;
   man_day: number;
   effort: number;
-  start_date: string;
-  issue_id: string;
-  clear: ("start_date" | "issue_id")[];
+  start_date: string | null; // null clears the date
 }>;
 
 export const wbsApi = {
-  tree: (slug: string) => call<TWbsTree>("GET", `${base(slug)}/tree`),
-  addPhase: (slug: string, name: string) => call<{ id: string }>("POST", `${base(slug)}/phases`, { name }),
+  tree: (slug: string) => call<TWbsTree>("GET", `${base(slug)}/tree/`),
+  addPhase: (slug: string, name: string) => call<{ id: string }>("POST", `${base(slug)}/phases/`, { name }),
   patchPhase: (slug: string, id: string, data: { name?: string; color?: string }) =>
-    call("PATCH", `${base(slug)}/phases/${id}`, data),
-  deletePhase: (slug: string, id: string) => call("DELETE", `${base(slug)}/phases/${id}`),
+    call("PATCH", `${base(slug)}/phases/${id}/`, data),
+  deletePhase: (slug: string, id: string) => call("DELETE", `${base(slug)}/phases/${id}/`),
   addNode: (slug: string, data: { phase_id?: string; parent_id?: string; title: string }) =>
-    call<{ id: string }>("POST", `${base(slug)}/nodes`, data),
-  patchNode: (slug: string, id: string, data: TNodePatch) => call("PATCH", `${base(slug)}/nodes/${id}`, data),
-  deleteNode: (slug: string, id: string) => call("DELETE", `${base(slug)}/nodes/${id}`),
+    call<{ id: string }>("POST", `${base(slug)}/nodes/`, data),
+  patchNode: (slug: string, id: string, data: TNodePatch) => call("PATCH", `${base(slug)}/nodes/${id}/`, data),
+  deleteNode: (slug: string, id: string) => call("DELETE", `${base(slug)}/nodes/${id}/`),
   addMilestone: (slug: string, data: Pick<TWbsMilestone, "name" | "day">) =>
-    call<{ id: string }>("POST", `${base(slug)}/milestones`, data),
-  deleteMilestone: (slug: string, id: string) => call("DELETE", `${base(slug)}/milestones/${id}`),
+    call<{ id: string }>("POST", `${base(slug)}/milestones/`, data),
+  deleteMilestone: (slug: string, id: string) => call("DELETE", `${base(slug)}/milestones/${id}/`),
+  linkIssue: (slug: string, nodeId: string, issueId: string) =>
+    call("POST", `${base(slug)}/nodes/${nodeId}/issues/`, { issue_id: issueId }),
+  unlinkIssue: (slug: string, nodeId: string, issueId: string) =>
+    call("DELETE", `${base(slug)}/nodes/${nodeId}/issues/${issueId}/`),
   searchIssues: (slug: string, q: string) =>
     call<{ id: string; ref: string; name: string; status: string | null }[]>(
       "GET",
-      `${base(slug)}/issues?q=${encodeURIComponent(q)}`
+      `${base(slug)}/issues/?q=${encodeURIComponent(q)}`
     ),
 };

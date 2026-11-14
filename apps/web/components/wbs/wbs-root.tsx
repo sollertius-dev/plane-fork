@@ -9,7 +9,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "@plane/utils";
 import { wbsApi } from "./api";
 import { EditableCell } from "./editable-cell";
-import { IssueLink } from "./issue-link";
+import { IssueLinks } from "./issue-links";
 import { buildTimeline, dayOfMonth, DAY_PX, fmtDate, mondayOnOrBefore, monthKey, monthLabel, toDay, WEEK_PX, xOf } from "./timeline";
 import type { TStatusGroup, TWbsNode, TWbsPhase, TWbsRow } from "./types";
 import { useWbs } from "./use-wbs";
@@ -62,10 +62,11 @@ function StatusChip({ node, row }: { node?: TWbsNode; row: TWbsRow }) {
     return <span className="text-[12px] text-tertiary">{node.children_done ?? 0}/{node.touchpoints.length} done</span>;
   }
   if (!node?.status) return <span className="text-[12px] text-tertiary">—</span>;
+  const progress = node.issues.length > 1 ? ` ${node.issues_done}/${node.issues.length}` : "";
   const s = STATUS_STYLE[(node.status_group ?? "backlog") as Exclude<TStatusGroup, null>] ?? STATUS_STYLE.backlog;
   return (
     <span className="truncate rounded-full px-2 py-0.5 text-[11px] font-medium" style={{ background: s.bg, color: s.fg }}>
-      {node.status}
+      {node.status}{progress}
     </span>
   );
 }
@@ -287,10 +288,10 @@ export function WbsRoot({ slug }: { slug: string }) {
                       <EditableCell value={row.title} readOnly={!canWrite} autoEdit={autoEditId === row.id}
                         display={<span className={cn(row.kind === "phase" ? "font-semibold text-primary" : row.kind === "epic" ? "font-medium text-primary" : "text-secondary")}>{row.title}</span>}
                         onCommit={(v) => v.trim() && (row.kind === "phase" ? run(() => wbsApi.patchPhase(slug, row.id, { name: v.trim() })) : patch({ title: v.trim() }))} />
-                      {isLeaf && node ? (
-                        <IssueLink slug={slug} canWrite={canWrite}
-                          current={node.issue_id && node.issue_ref ? { id: node.issue_id, ref: node.issue_ref, name: node.issue_name ?? "" } : null}
-                          onPick={(id) => patch(id ? { issue_id: id } : { clear: ["issue_id"] })} />
+                      {row.kind !== "phase" && node ? (
+                        <IssueLinks slug={slug} canWrite={canWrite} issues={node.issues}
+                          onAdd={(id) => run(() => wbsApi.linkIssue(slug, row.id, id))}
+                          onRemove={(id) => run(() => wbsApi.unlinkIssue(slug, row.id, id))} />
                       ) : null}
                       {canWrite ? (
                         <div className="absolute right-1 hidden items-center gap-0.5 rounded-sm bg-layer-1 group-hover:flex">
@@ -313,7 +314,7 @@ export function WbsRoot({ slug }: { slug: string }) {
                         {cell(COL.lead, <span className="w-full pr-1.5 text-right text-[13px] text-secondary">{row.lead_days ? `${row.lead_days}d` : "—"}</span>)}
                         {cell(COL.start, <EditableCell type="date" readOnly={!canEditNumbers} value={row.start ?? ""}
                           display={<span className={row.start ? "text-secondary" : "text-tertiary"}>{fmtDate(row.start)}</span>}
-                          onCommit={(v) => patch(v ? { start_date: v } : { clear: ["start_date"] })} />, "pl-2")}
+                          onCommit={(v) => patch({ start_date: v || null })} />, "pl-2")}
                         {cell(COL.who, <span className="truncate px-1.5 text-[12px] text-secondary" title={node?.assignees ?? ""}>{node?.assignees ?? "—"}</span>)}
                         {cell(COL.status, <span className="px-1.5"><StatusChip node={node} row={row} /></span>)}
                       </>
