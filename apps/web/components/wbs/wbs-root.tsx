@@ -197,9 +197,7 @@ export function WbsSchedule({ slug }: { slug: string }) {
         </span>
         {canWrite ? <button type="button" className={btn} onClick={addPhase}>+ Phase</button> : null}
         {canWrite ? <button type="button" className={btn} onClick={() => setMsForm(msForm ? null : { name: "", day: tree.today })}>+ Milestone</button> : null}
-        <button type="button" className={btn} onClick={() => scrollByWeeks(-6)} title="Move the timeline 6 weeks back" aria-label="Timeline back">◀</button>
         <button type="button" className={btn} onClick={scrollToToday}>Today</button>
-        <button type="button" className={btn} onClick={() => scrollByWeeks(6)} title="Move the timeline 6 weeks forward" aria-label="Timeline forward">▶</button>
         <button type="button" className={btn} onClick={() => setCollapsed(collapsed.size ? new Set() : new Set(allParents))}>{collapsed.size ? "Expand all" : "Collapse all"}</button>
         <button type="button" className={btn} onClick={() => setCompact((v) => !v)}>{compact ? "Show details" : "Hide details"}</button>
         {msForm ? (
@@ -218,7 +216,12 @@ export function WbsSchedule({ slug }: { slug: string }) {
       </div>
 
       {/* table + gantt in one scroll area, so rows always line up */}
-      <div ref={scroller} className="relative min-h-0 flex-1 overflow-auto">
+      <div className="relative min-h-0 flex-1">
+      <button type="button" onClick={() => scrollByWeeks(-6)} title="Move the timeline 6 weeks back" aria-label="Timeline back"
+        className="absolute top-0.5 z-30 flex h-5 w-6 items-center justify-center rounded-sm border border-subtle bg-layer-1 text-[10px] text-secondary hover:text-primary" style={{ left: leftW + 6 }}>◀</button>
+      <button type="button" onClick={() => scrollByWeeks(6)} title="Move the timeline 6 weeks forward" aria-label="Timeline forward"
+        className="absolute top-0.5 right-4 z-30 flex h-5 w-6 items-center justify-center rounded-sm border border-subtle bg-layer-1 text-[10px] text-secondary hover:text-primary">▶</button>
+      <div ref={scroller} className="relative h-full overflow-auto">
         <div className="relative" style={{ width: leftW + tl.width, minWidth: "100%" }}>
           {/* header */}
           <div className="sticky top-0 z-20 flex border-b border-subtle bg-layer-1" style={{ height: HEAD_H }}>
@@ -275,8 +278,8 @@ export function WbsSchedule({ slug }: { slug: string }) {
               );
               const patch = (data: Parameters<typeof wbsApi.patchNode>[2]) => run(() => wbsApi.patchNode(slug, row.id, data));
               return (
-                <div key={row.id} className="group flex border-b border-subtle" style={{ height: ROW_H[row.kind] }}>
-                  <div className={cn("sticky left-0 z-10 flex flex-shrink-0 items-center border-r border-subtle group-hover:bg-layer-1", row.kind === "phase" ? "bg-layer-1" : "bg-surface-1")} style={{ width: leftW }}>
+                <div key={row.id} className="group flex" style={{ height: ROW_H[row.kind] }}>
+                  <div className={cn("sticky left-0 z-10 flex flex-shrink-0 items-center border-r border-b border-subtle group-hover:bg-layer-1", row.kind === "phase" ? "bg-layer-1" : "bg-surface-1")} style={{ width: leftW }}>
                     {/* name */}
                     <div className="relative flex h-full flex-shrink-0 items-center gap-1 overflow-hidden" style={{ width: COL.name, paddingLeft: 8 + row.depth * 18, paddingRight: canWrite ? 58 : 4 }}>
                       {row.childCount > 0 || row.kind !== "touchpoint" ? (
@@ -325,7 +328,7 @@ export function WbsSchedule({ slug }: { slug: string }) {
                     )}
                   </div>
                   {/* gantt cell */}
-                  <div className="relative flex-shrink-0" style={{ width: tl.width, ...gridBg }}>
+                  <div className="relative flex-shrink-0 border-b border-subtle" style={{ width: tl.width, ...gridBg }}>
                     {bar ? (
                       <div className="absolute top-1/2 flex -translate-y-1/2 items-center overflow-hidden rounded-[3px]" title={`${row.title}: ${fmtDate(row.start)} → ${fmtDate(row.end)} · ${row.lead_days} d · ${num(row.man_day)} man-day`}
                         style={{ left: bar.x, width: bar.w, height: barH, background: row.color, opacity: row.kind === "phase" ? 0.95 : row.kind === "epic" ? 0.55 : done ? 1 : 0.78 }}>
@@ -348,6 +351,7 @@ export function WbsSchedule({ slug }: { slug: string }) {
             </div>
           </div>
         </div>
+      </div>
       </div>
       <HScrollBar target={scroller} step={WEEK_PX * 6} />
     </div>
