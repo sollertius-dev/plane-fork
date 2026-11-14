@@ -5,6 +5,7 @@
  */
 
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { wbsApi } from "./api";
 import type { TWbsIssue } from "./types";
 
@@ -24,6 +25,16 @@ export function IssueLinks({ slug, issues, canWrite, onAdd, onRemove }: Props) {
   const [q, setQ] = useState("");
   const [hits, setHits] = useState<Hit[]>([]);
   const box = useRef<HTMLDivElement>(null);
+  const pop = useRef<HTMLDivElement>(null);
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+
+  // The table cell clips its content and later rows paint over it, so the popover is drawn on the page body.
+  const toggle = () => {
+    if (open) return setOpen(false);
+    const r = box.current?.getBoundingClientRect();
+    if (r) setPos({ top: Math.min(r.bottom + 4, window.innerHeight - 380), left: Math.min(r.left, window.innerWidth - 340) });
+    setOpen(true);
+  };
 
   useEffect(() => {
     if (!open || !canWrite) return;
@@ -39,10 +50,19 @@ export function IssueLinks({ slug, issues, canWrite, onAdd, onRemove }: Props) {
   useEffect(() => {
     if (!open) return;
     const close = (e: MouseEvent) => {
-      if (box.current && !box.current.contains(e.target as Node)) setOpen(false);
+      const t = e.target as Node;
+      if (box.current?.contains(t) || pop.current?.contains(t)) return;
+      setOpen(false);
+    };
+    const closeOnScroll = (e: Event) => {
+      if (!pop.current?.contains(e.target as Node)) setOpen(false);
     };
     document.addEventListener("mousedown", close);
-    return () => document.removeEventListener("mousedown", close);
+    window.addEventListener("scroll", closeOnScroll, true);
+    return () => {
+      document.removeEventListener("mousedown", close);
+      window.removeEventListener("scroll", closeOnScroll, true);
+    };
   }, [open]);
 
   const linked = new Set(issues.map((i) => i.id));
@@ -53,7 +73,7 @@ export function IssueLinks({ slug, issues, canWrite, onAdd, onRemove }: Props) {
     <div ref={box} className="relative flex-shrink-0">
       <button
         type="button"
-        onClick={() => setOpen((v) => !v)}
+        onClick={toggle}
         title={issues.length ? issues.map((i) => `${i.ref} ${i.name}`).join("\n") : "Link work items"}
         className={
           issues.length
@@ -70,8 +90,9 @@ export function IssueLinks({ slug, issues, canWrite, onAdd, onRemove }: Props) {
           "🔗 Link"
         )}
       </button>
-      {open ? (
-        <div className="absolute top-7 left-0 z-40 w-80 rounded-md border border-subtle bg-surface-1 p-2 shadow-lg">
+      {open && pos
+        ? createPortal(
+        <div ref={pop} style={{ position: "fixed", top: pos.top, left: pos.left }} className="z-[100] w-80 rounded-md border border-subtle bg-surface-1 p-2 shadow-lg">
           {issues.length ? (
             <div className="mb-2 max-h-44 overflow-y-auto">
               <p className="px-2 pb-1 text-[11px] font-semibold tracking-wide text-tertiary uppercase">
@@ -134,8 +155,10 @@ export function IssueLinks({ slug, issues, canWrite, onAdd, onRemove }: Props) {
               </div>
             </>
           ) : null}
-        </div>
-      ) : null}
+        </div>,
+        document.body
+      )
+        : null}
     </div>
   );
 }
