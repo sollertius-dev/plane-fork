@@ -17,6 +17,7 @@ import {
   YourWorkOutline,
 } from "@makeplane/propel/icons";
 import { cn } from "@plane/utils";
+import { WbsIcon } from "@/components/wbs/wbs-icon";
 
 export const getSidebarNavigationItemIcon = (key: string, className: string = "") => {
   switch (key) {
@@ -38,6 +39,8 @@ export const getSidebarNavigationItemIcon = (key: string, className: string = ""
       return <DraftsOutline className={cn("size-4 flex-shrink-0", className)} />;
     case "archives":
       return <ArchiveOutline className={cn("size-4 flex-shrink-0", className)} />;
+    case "wbs":
+      return <WbsIcon className={cn("size-4 flex-shrink-0", className)} />;
     case "stickies":
       return <MultipleStickyOutline className={cn("size-4 flex-shrink-0", className)} />;
   }
