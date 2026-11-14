@@ -55,6 +55,7 @@ export const SidebarItemBase = observer(function SidebarItemBase({
     "your_work",
     "stickies",
     "drafts",
+    "wbs", // Sollertius patch: always shown, not a pinnable preference
     ...(additionalStaticItems || []),
   ];
   const slug = workspaceSlug?.toString() || "";
