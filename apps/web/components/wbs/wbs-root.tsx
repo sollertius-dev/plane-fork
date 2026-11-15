@@ -6,7 +6,9 @@
 
 import type { CSSProperties, ReactNode } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { observer } from "mobx-react";
 import { cn } from "@plane/utils";
+import { useIssueDetail } from "@/hooks/store/use-issue-detail";
 import { wbsApi } from "./api";
 import { EditableCell } from "./editable-cell";
 import { AssigneeAvatars } from "./assignee-avatars";
@@ -16,6 +18,7 @@ import { HScrollBar } from "./h-scroll-bar";
 import { IssueLinks } from "./issue-links";
 import { buildTimeline, dayOfMonth, DAY_PX, fmtDate, mondayOnOrBefore, monthKey, monthLabel, toDay, WEEK_PX, xOf } from "./timeline";
 import type { TStatusGroup, TWbsNode, TWbsPhase, TWbsRow } from "./types";
+import { useOpenWorkItem } from "./use-open-work-item";
 import { useWbs } from "./use-wbs";
 
 const ROW_H = { phase: 38, epic: 34, touchpoint: 34, issue: 30 } as const;
@@ -90,9 +93,21 @@ const Chevron = ({ open }: { open: boolean }) => (
   </svg>
 );
 
-export function WbsSchedule({ slug, plan }: { slug: string; plan: string }) {
+export const WbsSchedule = observer(function WbsSchedule({ slug, plan }: { slug: string; plan: string }) {
   const scope = useMemo(() => ({ slug, plan }), [slug, plan]);
-  const { tree, error, loading, run, clearError } = useWbs(scope);
+  const { tree, error, loading, reload, run, clearError } = useWbs(scope);
+  const openWorkItem = useOpenWorkItem(slug);
+  // the states shown here come from Plane: refresh them when the side view is closed, as it may have changed a work item
+  const { peekIssue } = useIssueDetail();
+  const peekOpen = !!peekIssue;
+  const wasPeeking = useRef(false);
+  useEffect(() => {
+    if (peekOpen) wasPeeking.current = true;
+    else if (wasPeeking.current) {
+      wasPeeking.current = false;
+      void reload();
+    }
+  }, [peekOpen, reload]);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [openIssues, setOpenIssues] = useState<Set<string>>(new Set());
   const [compact, setCompact] = useState(false);
@@ -260,7 +275,7 @@ export function WbsSchedule({ slug, plan }: { slug: string; plan: string }) {
       </div>
 
       {/* table + gantt in one scroll area, so rows always line up */}
-      <div className="relative min-h-0 flex-1">
+      <div className="relative isolate min-h-0 flex-1">
       <button type="button" onClick={() => scrollByWeeks(-6)} title="Move the timeline 6 weeks back" aria-label="Timeline back"
         className="absolute top-0.5 z-30 flex h-5 w-6 items-center justify-center rounded-sm border border-subtle bg-layer-1 text-[10px] text-secondary hover:text-primary" style={{ left: leftW + 6 }}>◀</button>
       <button type="button" onClick={() => scrollByWeeks(6)} title="Move the timeline 6 weeks forward" aria-label="Timeline forward"
@@ -328,8 +343,8 @@ export function WbsSchedule({ slug, plan }: { slug: string; plan: string }) {
                   <div key={row.id} className="group flex" style={{ height: ROW_H.issue }}>
                     <div className="sticky left-0 z-10 flex flex-shrink-0 items-center border-r border-b border-subtle bg-surface-1 group-hover:bg-layer-1" style={{ width: leftW }}>
                       <div className="relative flex h-full flex-shrink-0 items-center gap-2 overflow-hidden border-r border-subtle" style={{ width: cols.name, paddingLeft: 8 + row.depth * 18 + 24, paddingRight: canWrite ? 30 : 4 }}>
-                        <a href={`/${slug}/browse/${it.ref}/`} target="_blank" rel="noreferrer" className="flex-shrink-0 text-[11px] font-medium text-tertiary hover:text-primary hover:underline">{it.ref}</a>
-                        <span className="truncate text-[12px] text-secondary" title={it.name}>{it.name}</span>
+                        <a href={`/${slug}/browse/${it.ref}/`} onClick={(e) => openWorkItem(e, it)} className="flex-shrink-0 cursor-pointer text-[11px] font-medium text-tertiary hover:text-primary hover:underline">{it.ref}</a>
+                        <a href={`/${slug}/browse/${it.ref}/`} onClick={(e) => openWorkItem(e, it)} className="cursor-pointer truncate text-[12px] text-secondary hover:text-primary" title={it.name}>{it.name}</a>
                         {canWrite ? (
                           <button type="button" title="Unlink this work item" onClick={() => run(() => wbsApi.unlinkIssue(scope, row.nodeId as string, it.id))} className="absolute right-1 hidden size-6 items-center justify-center rounded-sm bg-layer-1 text-[12px] text-tertiary group-hover:flex hover:text-danger-primary">✕</button>
                         ) : null}
@@ -388,7 +403,7 @@ export function WbsSchedule({ slug, plan }: { slug: string; plan: string }) {
                         display={<span className={cn(row.kind === "phase" ? "font-semibold text-primary" : row.kind === "epic" ? "font-medium text-primary" : "text-secondary")}>{row.title}</span>}
                         onCommit={(v) => v.trim() && (row.kind === "phase" ? run(() => wbsApi.patchPhase(scope, row.id, { name: v.trim() })) : patch({ title: v.trim() }))} />
                       {row.kind !== "phase" && node ? (
-                        <IssueLinks scope={scope} slug={slug} canWrite={canWrite} issues={node.issues}
+                        <IssueLinks scope={scope} slug={slug} onOpen={openWorkItem} canWrite={canWrite} issues={node.issues}
                           onAdd={(id) => run(() => wbsApi.linkIssue(scope, row.id, id))}
                           onRemove={(id) => run(() => wbsApi.unlinkIssue(scope, row.id, id))} />
                       ) : null}
@@ -448,4 +463,4 @@ export function WbsSchedule({ slug, plan }: { slug: string; plan: string }) {
       <HScrollBar target={scroller} step={WEEK_PX * 6} />
     </div>
   );
-}
+});

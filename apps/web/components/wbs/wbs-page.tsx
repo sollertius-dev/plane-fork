@@ -5,7 +5,11 @@
  */
 
 import { useCallback, useEffect, useState } from "react";
+import { EIssuesStoreType } from "@plane/types";
 import { cn } from "@plane/utils";
+import { IssuePeekOverview } from "@/components/issues/peek-overview";
+import { useIssueDetail } from "@/hooks/store/use-issue-detail";
+import { IssuesStoreContext } from "@/hooks/use-issue-layout-store";
 import { wbsPlanApi } from "./api";
 import { weekLabel } from "./calendar";
 import { PlanDialog } from "./plan-dialog";
@@ -35,6 +39,9 @@ const writeStored = (slug: string, id: string) => {
 };
 
 export function WbsRoot({ slug }: { slug: string }) {
+  const { setPeekIssue } = useIssueDetail();
+  // leaving the page must not leave a side view open on the next one
+  useEffect(() => () => setPeekIssue(undefined), [setPeekIssue]);
   const [tab, setTab] = useState<(typeof TABS)[number]["key"]>("schedule");
   const [list, setList] = useState<TWbsPlanList | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -82,6 +89,7 @@ export function WbsRoot({ slug }: { slug: string }) {
   } else body = <WbsSchedule key={`${plan.id}:${plan.working_days.join("")}:${plan.holidays.join(",")}`} slug={slug} plan={plan.id} />;
 
   return (
+    <IssuesStoreContext.Provider value={EIssuesStoreType.GLOBAL}>
     <div className="flex h-full min-h-0 w-full flex-col bg-surface-1">
       <div className="flex flex-shrink-0 items-center gap-1 border-b border-subtle px-4" role="tablist">
         {TABS.map((t) => (
@@ -156,6 +164,9 @@ export function WbsRoot({ slug }: { slug: string }) {
           }}
         />
       ) : null}
+      {/* the side view of a work item, as in the work item lists */}
+      <IssuePeekOverview />
     </div>
+    </IssuesStoreContext.Provider>
   );
 }

@@ -10,6 +10,7 @@ export type TStatusGroup = "backlog" | "unstarted" | "started" | "completed" | "
 
 export type TWbsIssue = {
   id: string;
+  project_id: string;
   ref: string; // e.g. PFD-3
   name: string;
   status: string | null;

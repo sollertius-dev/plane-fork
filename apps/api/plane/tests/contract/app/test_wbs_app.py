@@ -282,4 +282,4 @@ class TestWbs:
         person = {"id": str(create_user.id), "name": create_user.display_name, "avatar": None}
         assert n["assignees"] == [person]
         assert n["issues"][0]["assignees"] == [person]
-        assert set(n["issues"][0]) >= {"ref", "name", "status", "status_group", "start", "end"}
+        assert set(n["issues"][0]) >= {"ref", "name", "status", "status_group", "start", "end", "project_id"}
