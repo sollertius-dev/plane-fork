@@ -9,12 +9,14 @@ import { createPortal } from "react-dom";
 import { wbsApi } from "./api";
 import type { TScope } from "./api";
 import type { TWbsIssue } from "./types";
+import type { useOpenWorkItem } from "./use-open-work-item";
 
 type Hit = { id: string; ref: string; name: string; status: string | null };
 
 type Props = {
   scope: TScope;
   slug: string;
+  onOpen: ReturnType<typeof useOpenWorkItem>;
   issues: TWbsIssue[];
   canWrite: boolean;
   onAdd: (issueId: string) => void;
@@ -22,7 +24,7 @@ type Props = {
 };
 
 // Work items linked to one WBS row: a counter on the row, and a popover to see, add and remove them.
-export function IssueLinks({ scope, slug, issues, canWrite, onAdd, onRemove }: Props) {
+export function IssueLinks({ scope, slug, onOpen, issues, canWrite, onAdd, onRemove }: Props) {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState("");
   const [hits, setHits] = useState<Hit[]>([]);
@@ -104,9 +106,11 @@ export function IssueLinks({ scope, slug, issues, canWrite, onAdd, onRemove }: P
                 <div key={i.id} className="flex items-center gap-2 rounded-sm px-2 py-1 hover:bg-layer-1-hover">
                   <a
                     href={`/${slug}/browse/${i.ref}/`}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="flex min-w-0 flex-1 items-baseline gap-2 text-[13px]"
+                    onClick={(e) => {
+                      onOpen(e, i);
+                      setOpen(false);
+                    }}
+                    className="flex min-w-0 flex-1 cursor-pointer items-baseline gap-2 text-[13px]"
                   >
                     <span className="flex-shrink-0 text-[11px] font-medium text-tertiary">{i.ref}</span>
                     <span className="truncate text-primary">{i.name}</span>

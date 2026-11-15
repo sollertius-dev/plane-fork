@@ -120,7 +120,7 @@ export function WbsGuideline() {
           <Li>The box lists the linked items. Press ✕ next to one to unlink it. Type a name or a key such as PFD-3 to search, and click a result to link it. The box stays open so that you can link several.</Li>
           <Li>The <B>Status</B> of the row comes from its work items: <B>Done</B> when all are completed, <B>In progress</B> when at least one has started or is done, <B>Not started</B> otherwise, with a counter such as 2/5. Cancelled items are not counted.</Li>
           <Li>The <B>Assignee</B> is everyone assigned to the linked work items.</Li>
-          <Li>The key is a link: it opens the work item in Plane.</Li>
+          <Li>Click the key or the name of a work item to open it in the <B>side view</B>, as in the work item lists, without leaving this page. Close it and the statuses refresh. Ctrl or Cmd + click opens the full page in a new tab.</Li>
           <Li><B>See what is linked:</B> the arrow in front of an epic or touch point opens its work items as grey rows underneath, with their key, name, assignees and Plane state. A thin outlined bar shows the work item's own start and due dates in Plane, if it has them, so that you can compare the plan with what the team really scheduled. Point at one of these rows and press ✕ to unlink it. A row with no children and no work items has no arrow. <B>Expand all</B> opens everything.</Li>
           <Li>On an epic that has touch points, the status column shows how many touch points are done. Link work items to the touch points, not to such an epic.</Li>
         </ul>

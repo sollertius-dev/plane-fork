@@ -358,7 +358,7 @@ class WbsTreeEndpoint(BaseAPIView):
                 "lead_days": days, "start": start, "end": end, "start_input": n.start_date,
                 "issues": [
                     {
-                        "id": str(l.issue_id), "ref": f"{l.issue.project.identifier}-{l.issue.sequence_id}",
+                        "id": str(l.issue_id), "project_id": str(l.issue.project_id), "ref": f"{l.issue.project.identifier}-{l.issue.sequence_id}",
                         "name": l.issue.name, "status": l.issue.state.name if l.issue.state_id else None,
                         "status_group": l.issue.state.group if l.issue.state_id else None,
                         "start": l.issue.start_date, "end": l.issue.target_date,
