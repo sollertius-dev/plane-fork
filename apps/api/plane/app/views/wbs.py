@@ -332,9 +332,13 @@ class WbsTreeEndpoint(BaseAPIView):
             .select_related("issue", "issue__state", "issue__project")
             .order_by("created_at")
         )
-        assignees = defaultdict(set)
-        for ia in IssueAssignee.objects.filter(issue__in=[l.issue_id for l in links]).select_related("assignee"):
-            assignees[ia.issue_id].add(ia.assignee.display_name)
+        assignees = defaultdict(dict)
+        for ia in IssueAssignee.objects.filter(issue__in=[l.issue_id for l in links]).select_related(
+            "assignee", "assignee__avatar_asset"
+        ):
+            assignees[ia.issue_id][ia.assignee_id] = {
+                "id": str(ia.assignee_id), "name": ia.assignee.display_name, "avatar": ia.assignee.avatar_url or None,
+            }
         by_node = defaultdict(list)
         for link in links:
             by_node[link.node_id].append(link)
@@ -344,10 +348,10 @@ class WbsTreeEndpoint(BaseAPIView):
             start, end = cal.span(n.start_date, days)
             node_links = by_node.get(n.id, [])
             counts = defaultdict(int)
-            who = set()
+            who = {}
             for l in node_links:
                 counts[l.issue.state.group if l.issue.state_id else "backlog"] += 1
-                who |= assignees.get(l.issue_id, set())
+                who.update(assignees.get(l.issue_id, {}))
             label, group = node_status(counts)
             return {
                 "id": str(n.id), "title": n.title, "man_day": float(n.man_day), "effort": float(n.effort),
@@ -361,7 +365,7 @@ class WbsTreeEndpoint(BaseAPIView):
                     for l in node_links
                 ],
                 "issues_done": counts.get("completed", 0),
-                "status": label, "status_group": group, "assignees": ", ".join(sorted(who)) or None,
+                "status": label, "status_group": group, "assignees": sorted(who.values(), key=lambda u: (u["name"] or "").lower()),
             }
 
         def roll(items):
