@@ -78,8 +78,9 @@ const Chevron = ({ open }: { open: boolean }) => (
   </svg>
 );
 
-export function WbsSchedule({ slug }: { slug: string }) {
-  const { tree, error, loading, run, clearError } = useWbs(slug);
+export function WbsSchedule({ slug, plan }: { slug: string; plan: string }) {
+  const scope = useMemo(() => ({ slug, plan }), [slug, plan]);
+  const { tree, error, loading, run, clearError } = useWbs(scope);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [compact, setCompact] = useState(false);
   const [autoEditId, setAutoEditId] = useState<string | null>(null);
@@ -135,7 +136,7 @@ export function WbsSchedule({ slug }: { slug: string }) {
   }, [tree]);
 
   const addPhase = async () => {
-    const r = await run(() => wbsApi.addPhase(slug, "New phase"));
+    const r = await run(() => wbsApi.addPhase(scope, "New phase"));
     if (r) setAutoEditId(r.id);
   };
   const addChild = async (row: TWbsRow) => {
@@ -146,19 +147,19 @@ export function WbsSchedule({ slug }: { slug: string }) {
     });
     const r = await run(() =>
       row.kind === "phase"
-        ? wbsApi.addNode(slug, { phase_id: row.id, title: "New epic" })
-        : wbsApi.addNode(slug, { parent_id: row.id, title: "New touch point" })
+        ? wbsApi.addNode(scope, { phase_id: row.id, title: "New epic" })
+        : wbsApi.addNode(scope, { parent_id: row.id, title: "New touch point" })
     );
     if (r) setAutoEditId(r.id);
   };
   const remove = async (row: TWbsRow) => {
     const kids = row.childCount ? ` and its ${row.childCount} item(s)` : "";
     if (!window.confirm(`Delete "${row.title}"${kids}? Linked Plane work items are not touched.`)) return;
-    await run(() => (row.kind === "phase" ? wbsApi.deletePhase(slug, row.id) : wbsApi.deleteNode(slug, row.id)));
+    await run(() => (row.kind === "phase" ? wbsApi.deletePhase(scope, row.id) : wbsApi.deleteNode(scope, row.id)));
   };
   const addMilestone = async () => {
     if (!msForm?.name.trim() || !msForm.day) return;
-    await run(() => wbsApi.addMilestone(slug, { name: msForm.name.trim(), day: msForm.day }));
+    await run(() => wbsApi.addMilestone(scope, { name: msForm.name.trim(), day: msForm.day }));
     setMsForm(null);
   };
 
@@ -253,7 +254,7 @@ export function WbsSchedule({ slug }: { slug: string }) {
               <div className="absolute top-12 h-6 w-full">
                 {tree.milestones.map((m) => (
                   <button key={m.id} type="button" disabled={!canWrite} title={`${m.name} · ${fmtDate(m.day)}${canWrite ? " (click to delete)" : ""}`}
-                    onClick={() => window.confirm(`Delete milestone "${m.name}"?`) && run(() => wbsApi.deleteMilestone(slug, m.id))}
+                    onClick={() => window.confirm(`Delete milestone "${m.name}"?`) && run(() => wbsApi.deleteMilestone(scope, m.id))}
                     className="absolute top-1 flex -translate-x-1/2 items-center gap-1 whitespace-nowrap text-[11px] font-medium text-primary" style={{ left: xOf(tl, toDay(m.day)) + DAY_PX / 2 }}>
                     <span className="size-2 rotate-45 bg-amber-500" />{m.name}
                   </button>
@@ -276,7 +277,7 @@ export function WbsSchedule({ slug }: { slug: string }) {
               const cell = (w: number, child: ReactNode, extra?: string) => (
                 <div className={cn("flex h-full flex-shrink-0 items-center overflow-hidden px-0.5", extra)} style={{ width: w }}>{child}</div>
               );
-              const patch = (data: Parameters<typeof wbsApi.patchNode>[2]) => run(() => wbsApi.patchNode(slug, row.id, data));
+              const patch = (data: Parameters<typeof wbsApi.patchNode>[2]) => run(() => wbsApi.patchNode(scope, row.id, data));
               return (
                 <div key={row.id} className="group flex" style={{ height: ROW_H[row.kind] }}>
                   <div className={cn("sticky left-0 z-10 flex flex-shrink-0 items-center border-r border-b border-subtle group-hover:bg-layer-1", row.kind === "phase" ? "bg-layer-1" : "bg-surface-1")} style={{ width: leftW }}>
@@ -289,16 +290,16 @@ export function WbsSchedule({ slug }: { slug: string }) {
                       ) : <span className="size-5 flex-shrink-0" />}
                       {row.kind === "phase" ? (
                         canWrite ? (
-                          <input type="color" value={row.color} onChange={(e) => run(() => wbsApi.patchPhase(slug, row.id, { color: e.target.value }))} className="size-4 flex-shrink-0 cursor-pointer rounded-sm border-0 bg-transparent p-0" title="Phase colour" />
+                          <input type="color" value={row.color} onChange={(e) => run(() => wbsApi.patchPhase(scope, row.id, { color: e.target.value }))} className="size-4 flex-shrink-0 cursor-pointer rounded-sm border-0 bg-transparent p-0" title="Phase colour" />
                         ) : <span className="size-3 flex-shrink-0 rounded-sm" style={{ background: row.color }} />
                       ) : null}
                       <EditableCell value={row.title} readOnly={!canWrite} autoEdit={autoEditId === row.id}
                         display={<span className={cn(row.kind === "phase" ? "font-semibold text-primary" : row.kind === "epic" ? "font-medium text-primary" : "text-secondary")}>{row.title}</span>}
-                        onCommit={(v) => v.trim() && (row.kind === "phase" ? run(() => wbsApi.patchPhase(slug, row.id, { name: v.trim() })) : patch({ title: v.trim() }))} />
+                        onCommit={(v) => v.trim() && (row.kind === "phase" ? run(() => wbsApi.patchPhase(scope, row.id, { name: v.trim() })) : patch({ title: v.trim() }))} />
                       {row.kind !== "phase" && node ? (
-                        <IssueLinks slug={slug} canWrite={canWrite} issues={node.issues}
-                          onAdd={(id) => run(() => wbsApi.linkIssue(slug, row.id, id))}
-                          onRemove={(id) => run(() => wbsApi.unlinkIssue(slug, row.id, id))} />
+                        <IssueLinks scope={scope} slug={slug} canWrite={canWrite} issues={node.issues}
+                          onAdd={(id) => run(() => wbsApi.linkIssue(scope, row.id, id))}
+                          onRemove={(id) => run(() => wbsApi.unlinkIssue(scope, row.id, id))} />
                       ) : null}
                       {canWrite ? (
                         <div className="absolute right-1 hidden items-center gap-0.5 rounded-sm bg-layer-1 group-hover:flex">

@@ -63,7 +63,7 @@ export function HScrollBar({ target, step }: { target: RefObject<HTMLDivElement 
       <button type="button" className={arrow} onClick={() => by(-step)} aria-label="Scroll timeline left" title="Move left">
         ◀
       </button>
-      <div ref={track} onPointerDown={onTrack} className="relative h-2 min-w-0 flex-1 cursor-pointer rounded-full bg-layer-3">
+      <div ref={track} onPointerDown={onTrack} className="relative h-1.5 min-w-0 flex-1 cursor-pointer rounded-full bg-layer-3">
         <div
           onPointerDown={onDown}
           onPointerMove={onMove}
@@ -72,7 +72,7 @@ export function HScrollBar({ target, step }: { target: RefObject<HTMLDivElement 
           role="scrollbar"
           aria-orientation="horizontal"
           aria-valuenow={Math.round(m.left)}
-          className="absolute top-0 h-2 cursor-grab touch-none rounded-full bg-accent-primary opacity-70 hover:opacity-100 active:cursor-grabbing active:opacity-100"
+          className="absolute top-0 h-1.5 cursor-grab touch-none rounded-full bg-accent-primary opacity-70 hover:opacity-100 active:cursor-grabbing active:opacity-100"
           style={{ left: thumbLeft, width: thumbW }}
         />
       </div>

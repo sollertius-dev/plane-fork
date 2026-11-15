@@ -6,9 +6,10 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { wbsApi } from "./api";
+import type { TScope } from "./api";
 import type { TWbsTree } from "./types";
 
-export function useWbs(slug: string) {
+export function useWbs(scope: TScope) {
   const [tree, setTree] = useState<TWbsTree | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -16,7 +17,7 @@ export function useWbs(slug: string) {
 
   const reload = useCallback(async () => {
     try {
-      const t = await wbsApi.tree(slug);
+      const t = await wbsApi.tree(scope);
       if (alive.current) {
         setTree(t);
         setError(null);
@@ -26,7 +27,7 @@ export function useWbs(slug: string) {
     } finally {
       if (alive.current) setLoading(false);
     }
-  }, [slug]);
+  }, [scope.slug, scope.plan]);
 
   useEffect(() => {
     alive.current = true;

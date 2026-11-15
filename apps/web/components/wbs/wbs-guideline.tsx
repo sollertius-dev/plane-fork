@@ -36,6 +36,19 @@ export function WbsGuideline() {
           no more.
         </P>
 
+        <H>Several WBS, each with its own projects</H>
+        <P>
+          A workspace can hold <B>more than one WBS</B>, for example one per product. Each WBS is tied to a set of
+          projects. Use the <B>WBS</B> selector at the top right to switch, <B>+ New WBS</B> to create one and{" "}
+          <B>Edit</B> to rename it or change its projects.
+        </P>
+        <ul className="mb-2 ml-5 list-disc">
+          <Li>A WBS can only work with the work items of <B>its own projects</B>. If WBS X has projects A, B and C, and WBS Y has D, E and F, then X links and searches work items of A, B and C only, and never those of D, E and F.</Li>
+          <Li>You can only add a project that you are a member of, and you only see work items of such projects.</Li>
+          <Li>If you remove a project from a WBS, the links to its work items disappear from view and from the status. They come back if you add the project again.</Li>
+          <Li>Deleting a WBS deletes its phases, rows, milestones and links. Plane work items are never deleted.</Li>
+        </ul>
+
         <H>Reading the screen</H>
         <table className="mb-2 w-full">
           <tbody>
@@ -86,7 +99,7 @@ export function WbsGuideline() {
           project that you belong to.
         </P>
         <ul className="mb-2 ml-5 list-disc">
-          <Li>Point at the row and press <B>🔗 Link</B>. Once something is linked, the button shows the first key, for example <B>PFD-3 +2</B>.</Li>
+          <Li>Point at the row and press <B>🔗 Link</B>. The box searches the projects of the current WBS. Once something is linked, the button shows the first key, for example <B>PFD-3 +2</B>.</Li>
           <Li>The box lists the linked items. Press ✕ next to one to unlink it. Type a name or a key such as PFD-3 to search, and click a result to link it. The box stays open so that you can link several.</Li>
           <Li>The <B>Status</B> of the row comes from its work items: <B>Done</B> when all are completed, <B>In progress</B> when at least one has started or is done, <B>Not started</B> otherwise, with a counter such as 2/5. Cancelled items are not counted.</Li>
           <Li>The <B>Assignee</B> is everyone assigned to the linked work items.</Li>
