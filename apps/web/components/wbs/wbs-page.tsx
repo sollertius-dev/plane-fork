@@ -7,6 +7,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { cn } from "@plane/utils";
 import { wbsPlanApi } from "./api";
+import { weekLabel } from "./calendar";
 import { PlanDialog } from "./plan-dialog";
 import type { TWbsPlan, TWbsPlanList } from "./types";
 import { WbsGuideline } from "./wbs-guideline";
@@ -78,7 +79,7 @@ export function WbsRoot({ slug }: { slug: string }) {
         {canWrite ? <button type="button" className={cn(btn, "h-8 px-3")} onClick={() => setDialog("new")}>+ New WBS</button> : null}
       </div>
     );
-  } else body = <WbsSchedule key={plan.id} slug={slug} plan={plan.id} />;
+  } else body = <WbsSchedule key={`${plan.id}:${plan.working_days.join("")}:${plan.holidays.join(",")}`} slug={slug} plan={plan.id} />;
 
   return (
     <div className="flex h-full min-h-0 w-full flex-col bg-surface-1">
@@ -124,6 +125,14 @@ export function WbsRoot({ slug }: { slug: string }) {
                 title={plan.projects.map((p) => `${p.identifier} ${p.name}`).join("\n") || "No projects selected"}
               >
                 {plan.projects.length + plan.hidden_projects} project{plan.projects.length + plan.hidden_projects === 1 ? "" : "s"}
+              </span>
+            ) : null}
+            {plan ? (
+              <span
+                className="text-[12px] text-tertiary"
+                title={`Working days: ${weekLabel(plan.working_days)}${plan.holidays.length ? `\n${plan.holidays.length} day(s) off` : ""}`}
+              >
+                · {weekLabel(plan.working_days)}
               </span>
             ) : null}
             {canWrite && plan ? <button type="button" className={btn} onClick={() => setDialog("edit")}>Edit</button> : null}

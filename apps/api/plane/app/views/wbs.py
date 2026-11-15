@@ -49,6 +49,10 @@ WRITE = [ROLE.ADMIN, ROLE.MEMBER]
 class PlanInput(serializers.Serializer):
     name = serializers.CharField(max_length=120, required=False)
     project_ids = serializers.ListField(child=serializers.UUIDField(), required=False, max_length=200)
+    working_days = serializers.ListField(
+        child=serializers.IntegerField(min_value=0, max_value=6), required=False, min_length=1, max_length=7
+    )
+    holidays = serializers.ListField(child=serializers.DateField(), required=False, max_length=400)
 
 
 class PhaseInput(serializers.Serializer):
@@ -82,11 +86,55 @@ def lead_days(man_day, effort):
     return math.ceil(man_day / effort) if man_day > 0 and effort > 0 else 0
 
 
-def span(start, days):
-    """Calendar-day span. A zero-day item with a start date is a one-day marker."""
-    if not start:
-        return None, None
-    return start, start + timedelta(days=max(days, 1) - 1)
+class WorkCalendar:
+    """The working days of a plan: chosen weekdays (Monday is 0) minus the holidays.
+
+    Lead time counts working days. A row that starts on a day off starts on the next working day.
+    """
+
+    LIMIT = 40000  # safety bound for the day-by-day walk
+
+    def __init__(self, working_days, holidays):
+        self.days = {int(d) for d in working_days} or {0, 1, 2, 3, 4}
+        self.holidays = {date.fromisoformat(h) if isinstance(h, str) else h for h in holidays}
+
+    def is_working(self, d):
+        return d.weekday() in self.days and d not in self.holidays
+
+    def first_working(self, d):
+        for _ in range(4000):
+            if self.is_working(d):
+                return d
+            d += timedelta(days=1)
+        return d
+
+    def span(self, start, n):
+        """(first working day, day on which the n-th working day ends). A zero-length row is a one-day marker."""
+        if not start:
+            return None, None
+        first = self.first_working(start)
+        n = max(n, 1)
+        d, counted, steps = first, 1, 0
+        while counted < n and steps < self.LIMIT:
+            d += timedelta(days=1)
+            steps += 1
+            if self.is_working(d):
+                counted += 1
+        if counted < n:  # absurd lengths: degrade to calendar days instead of walking on
+            d += timedelta(days=n - counted)
+        return first, d
+
+    def count(self, a, b):
+        """Working days from a to b, both included."""
+        if not a or not b or b < a:
+            return 0
+        if (b - a).days > self.LIMIT:
+            return (b - a).days + 1
+        return sum(1 for i in range((b - a).days + 1) if self.is_working(a + timedelta(days=i)))
+
+
+def plan_calendar(plan):
+    return WorkCalendar(plan.working_days, plan.holidays)
 
 
 def member_projects(user, workspace_id):
@@ -162,7 +210,16 @@ def plan_out(plan, user):
         "id": str(plan.id), "name": plan.name,
         "projects": [{"id": str(p.id), "identifier": p.identifier, "name": p.name} for p in shown],
         "hidden_projects": len(ids) - len(shown),  # projects of the plan that this user is not a member of
+        "working_days": sorted(plan.working_days),
+        "holidays": sorted(plan.holidays),
     }
+
+
+def apply_calendar(plan, v):
+    if "working_days" in v:
+        plan.working_days = sorted(set(v["working_days"]))
+    if "holidays" in v:
+        plan.holidays = sorted({h.isoformat() for h in v["holidays"]})
 
 
 def set_plan_projects(plan, user, project_ids):
@@ -212,9 +269,9 @@ class WbsPlanEndpoint(BaseAPIView):
             return Response({"error": "name is required"}, status=status.HTTP_400_BAD_REQUEST)
         workspace = Workspace.objects.get(slug=slug)
         with transaction.atomic():
-            plan = WbsPlan.objects.create(
-                workspace=workspace, name=v["name"], sort_order=next_sort_order(WbsPlan, workspace=workspace)
-            )
+            plan = WbsPlan(workspace=workspace, name=v["name"], sort_order=next_sort_order(WbsPlan, workspace=workspace))
+            apply_calendar(plan, v)
+            plan.save()
             if not set_plan_projects(plan, request.user, v.get("project_ids", [])):
                 transaction.set_rollback(True)
                 return Response({"error": "Unknown project"}, status=status.HTTP_400_BAD_REQUEST)
@@ -231,7 +288,8 @@ class WbsPlanEndpoint(BaseAPIView):
         with transaction.atomic():
             if "name" in v:
                 obj.name = v["name"]
-                obj.save()
+            apply_calendar(obj, v)
+            obj.save()
             if "project_ids" in v and not set_plan_projects(obj, request.user, v["project_ids"]):
                 transaction.set_rollback(True)
                 return Response({"error": "Unknown project"}, status=status.HTTP_400_BAD_REQUEST)
@@ -265,6 +323,7 @@ class WbsTreeEndpoint(BaseAPIView):
             workspace=workspace, member=request.user, is_active=True, role__in=[r.value for r in WRITE]
         ).exists()
         phases = list(WbsPhase.objects.filter(plan=plan_obj))
+        cal = plan_calendar(plan_obj)
 
         nodes = list(WbsNode.objects.filter(phase__plan=plan_obj))
         visible = plan_issues(request.user, plan_obj)
@@ -282,7 +341,7 @@ class WbsTreeEndpoint(BaseAPIView):
 
         def node_out(n):
             days = lead_days(n.man_day, n.effort)
-            start, end = span(n.start_date, days)
+            start, end = cal.span(n.start_date, days)
             node_links = by_node.get(n.id, [])
             counts = defaultdict(int)
             who = set()
@@ -292,7 +351,7 @@ class WbsTreeEndpoint(BaseAPIView):
             label, group = node_status(counts)
             return {
                 "id": str(n.id), "title": n.title, "man_day": float(n.man_day), "effort": float(n.effort),
-                "lead_days": days, "start": start, "end": end,
+                "lead_days": days, "start": start, "end": end, "start_input": n.start_date,
                 "issues": [
                     {
                         "id": str(l.issue_id), "ref": f"{l.issue.project.identifier}-{l.issue.sequence_id}",
@@ -328,16 +387,17 @@ class WbsTreeEndpoint(BaseAPIView):
                 if tps:  # an epic with touch points is the roll-up of them
                     r = roll(tps)
                     e.update(r, rolled=True, children_done=sum(1 for t in tps if t["status_group"] == "completed"))
-                    e["lead_days"] = (r["end"] - r["start"]).days + 1 if r["start"] else 0
+                    e["lead_days"] = cal.count(r["start"], r["end"])
                 e["touchpoints"] = tps
                 epics.append(e)
             r = roll(epics)
             out.append({
                 "id": str(ph.id), "name": ph.name, "color": ph.color, **r,
-                "lead_days": (r["end"] - r["start"]).days + 1 if r["start"] else 0, "epics": epics,
+                "lead_days": cal.count(r["start"], r["end"]), "epics": epics,
             })
         return Response({
             "today": date.today(),
+            "calendar": {"working_days": sorted(plan_obj.working_days), "holidays": sorted(plan_obj.holidays)},
             "can_write": can_write,
             "phases": out,
             "milestones": [

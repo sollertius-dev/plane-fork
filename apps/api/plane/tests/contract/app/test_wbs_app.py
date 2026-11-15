@@ -76,17 +76,20 @@ class TestWbs:
         assert t["phases"] == [] and t["can_write"] is True
 
     def test_lead_time_and_rollup(self, session_client, workspace, plan):
+        # default calendar: Monday to Friday, so lead time is counted in working days
         phase = add_phase(session_client, workspace, plan)
         epic = session_client.post(pu(workspace, plan, "nodes/"), {"phase_id": phase, "title": "Epic"}, format="json").json()["id"]
         post = lambda body: session_client.post(pu(workspace, plan, "nodes/"), {"parent_id": epic, **body}, format="json")
-        assert post({"title": "A", "man_day": 28, "effort": 0.7, "start_date": "2026-11-16"}).status_code == 201
-        assert post({"title": "B", "man_day": 4, "effort": 0.2, "start_date": "2026-12-28"}).status_code == 201
+        assert post({"title": "A", "man_day": 28, "effort": 0.7, "start_date": "2026-11-16"}).status_code == 201  # Monday
+        assert post({"title": "B", "man_day": 4, "effort": 0.2, "start_date": "2026-12-28"}).status_code == 201  # Monday
         ph = tree(session_client, workspace, plan)["phases"][0]
         e = ph["epics"][0]
-        assert [t["lead_days"] for t in e["touchpoints"]] == [40, 20]  # 28 / 0.7 and 4 / 0.2
+        assert [t["lead_days"] for t in e["touchpoints"]] == [40, 20]  # 28 / 0.7 and 4 / 0.2 working days
+        assert [t["end"] for t in e["touchpoints"]] == ["2027-01-08", "2027-01-22"]  # 8 and 4 whole weeks, ending on a Friday
         assert e["man_day"] == 32 and e["rolled"] is True
-        assert (e["start"], e["end"]) == ("2026-11-16", "2027-01-16")
-        assert ph["man_day"] == 32 and ph["end"] == "2027-01-16"
+        assert (e["start"], e["end"]) == ("2026-11-16", "2027-01-22")
+        assert e["lead_days"] == 50  # working days between the two, 10 weeks
+        assert ph["man_day"] == 32 and ph["end"] == "2027-01-22" and ph["lead_days"] == 50
 
     def test_validation(self, session_client, workspace, plan):
         phase = add_phase(session_client, workspace, plan)
@@ -217,3 +220,53 @@ class TestWbs:
         assert session_client.delete(pu(workspace, plan, f"phases/{phase}/")).status_code == 204
         assert WbsNode.objects.filter(workspace=workspace).count() == 0
         assert Issue.objects.filter(pk=issue.pk).exists()
+
+    # ---- working calendar
+    def leaf(self, client, workspace, plan, **body):
+        phase = add_phase(client, workspace, plan)
+        node = client.post(pu(workspace, plan, "nodes/"), {"phase_id": phase, "title": "T", **body}, format="json").json()["id"]
+        return lambda: tree(client, workspace, plan)["phases"][0]["epics"][0], node
+
+    def test_default_calendar_is_monday_to_friday(self, session_client, workspace, plan):
+        listing = session_client.get(url(workspace, "plans/")).json()["plans"][0]
+        assert listing["working_days"] == [0, 1, 2, 3, 4] and listing["holidays"] == []
+        assert tree(session_client, workspace, plan)["calendar"]["working_days"] == [0, 1, 2, 3, 4]
+
+    def test_five_working_days_end_on_friday_and_ten_cross_a_weekend(self, session_client, workspace, plan):
+        read, _ = self.leaf(session_client, workspace, plan, man_day=5, effort=1, start_date="2026-11-16")  # Monday
+        assert (read()["start"], read()["end"], read()["lead_days"]) == ("2026-11-16", "2026-11-20", 5)
+        read, _ = self.leaf(session_client, workspace, make_plan(session_client, workspace, "Ten"), man_day=10, effort=1, start_date="2026-11-19")
+        assert read()["end"] == "2026-12-02"  # Thursday + 10 working days: the weekend is skipped
+
+    def test_saturday_can_be_a_working_day(self, session_client, workspace, plan):
+        r = session_client.patch(pu(workspace, plan, ""), {"working_days": [0, 1, 2, 3, 4, 5]}, format="json")
+        assert r.status_code == 200 and r.json()["working_days"] == [0, 1, 2, 3, 4, 5]
+        read, _ = self.leaf(session_client, workspace, plan, man_day=6, effort=1, start_date="2026-11-16")
+        assert read()["end"] == "2026-11-21"  # Monday to Saturday
+
+    def test_a_start_on_a_day_off_moves_to_the_next_working_day(self, session_client, workspace, plan):
+        read, node = self.leaf(session_client, workspace, plan, man_day=2, effort=1, start_date="2026-11-14")  # Saturday
+        e = read()
+        assert (e["start"], e["start_input"], e["end"]) == ("2026-11-16", "2026-11-14", "2026-11-17")
+
+    def test_holidays_are_skipped(self, session_client, workspace, plan):
+        session_client.patch(pu(workspace, plan, ""), {"holidays": ["2026-11-18"]}, format="json")  # Wednesday
+        read, _ = self.leaf(session_client, workspace, plan, man_day=5, effort=1, start_date="2026-11-16")
+        assert read()["end"] == "2026-11-23"  # one working day lost
+        # a holiday on a day that was off anyway changes nothing
+        session_client.patch(pu(workspace, plan, ""), {"holidays": ["2026-11-21"]}, format="json")
+        assert read()["end"] == "2026-11-20"
+
+    def test_seven_day_week(self, session_client, workspace, plan):
+        session_client.patch(pu(workspace, plan, ""), {"working_days": [0, 1, 2, 3, 4, 5, 6]}, format="json")
+        read, _ = self.leaf(session_client, workspace, plan, man_day=10, effort=1, start_date="2026-11-14")
+        assert (read()["start"], read()["end"]) == ("2026-11-14", "2026-11-23")
+
+    def test_calendar_validation(self, session_client, workspace, plan):
+        for bad in ({"working_days": []}, {"working_days": [7]}, {"working_days": [-1]}, {"holidays": ["not a date"]}):
+            assert session_client.patch(pu(workspace, plan, ""), bad, format="json").status_code == 400
+        r = session_client.post(url(workspace, "plans/"), {"name": "Six days", "working_days": [0, 1, 2, 3, 4, 5], "holidays": ["2026-12-25"]}, format="json")
+        assert r.status_code == 201 and r.json()["working_days"] == [0, 1, 2, 3, 4, 5] and r.json()["holidays"] == ["2026-12-25"]
+        # duplicates collapse and order does not matter
+        r = session_client.patch(pu(workspace, plan, ""), {"working_days": [4, 1, 1, 0]}, format="json")
+        assert r.json()["working_days"] == [0, 1, 4]

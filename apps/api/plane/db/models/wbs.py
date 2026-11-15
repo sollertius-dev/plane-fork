@@ -10,12 +10,19 @@ from django.db import models
 from .base import BaseModel
 
 
+def default_working_days():
+    return [0, 1, 2, 3, 4]  # Monday to Friday; Monday is 0
+
+
 class WbsPlan(BaseModel):
     """One WBS schedule. A workspace can have several, each tied to its own projects."""
 
     workspace = models.ForeignKey("db.Workspace", on_delete=models.CASCADE, related_name="wbs_plans")
     name = models.CharField(max_length=120)
     sort_order = models.FloatField(default=65535)
+    # Working calendar: lead time is counted in working days. Weekdays use Python's numbering, Monday is 0.
+    working_days = models.JSONField(default=default_working_days)
+    holidays = models.JSONField(default=list)  # ISO dates that are not worked, whatever the weekday
 
     class Meta:
         verbose_name = "WBS plan"
