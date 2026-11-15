@@ -39,7 +39,7 @@ function flatten(phases: TWbsPhase[], collapsed: Set<string>, openIssues: Set<st
     if (!openIssues.has(node.id)) return;
     for (const it of node.issues) {
       rows.push({
-        kind: "issue", id: `${node.id}:${it.id}`, depth, title: it.name, color, man_day: 0, effort: null, lead_days: 0,
+        kind: "issue", id: `${node.id}:${it.id}`, depth, title: it.name, color, man_day: 0, effort: null, lead_days: 0, actual_hours: it.effort_hours ?? 0, actual_days: 0,
         start: it.start, end: it.end, rolled: false, childCount: 0, issue: it, nodeId: node.id,
       });
     }
@@ -47,14 +47,14 @@ function flatten(phases: TWbsPhase[], collapsed: Set<string>, openIssues: Set<st
   for (const ph of phases) {
     rows.push({
       kind: "phase", id: ph.id, depth: 0, title: ph.name, color: ph.color, man_day: ph.man_day, effort: null,
-      lead_days: ph.lead_days, start: ph.start, end: ph.end, rolled: true, childCount: ph.epics.length,
+      lead_days: ph.lead_days, actual_hours: ph.actual_hours, actual_days: ph.actual_days, start: ph.start, end: ph.end, rolled: true, childCount: ph.epics.length,
     });
     if (collapsed.has(ph.id)) continue;
     for (const ep of ph.epics) {
       const tps = ep.touchpoints ?? [];
       rows.push({
         kind: "epic", id: ep.id, depth: 1, title: ep.title, color: ph.color, man_day: ep.man_day,
-        effort: ep.rolled ? null : ep.effort, lead_days: ep.lead_days, start: ep.start, end: ep.end,
+        effort: ep.rolled ? null : ep.effort, lead_days: ep.lead_days, actual_hours: ep.actual_hours, actual_days: ep.actual_days, start: ep.start, end: ep.end,
         rolled: !!ep.rolled, childCount: tps.length, node: ep,
       });
       if (tps.length === 0) pushIssues(ep, 2, ph.color);
@@ -62,7 +62,7 @@ function flatten(phases: TWbsPhase[], collapsed: Set<string>, openIssues: Set<st
       for (const tp of tps) {
         rows.push({
           kind: "touchpoint", id: tp.id, depth: 2, title: tp.title, color: ph.color, man_day: tp.man_day,
-          effort: tp.effort, lead_days: tp.lead_days, start: tp.start, end: tp.end, rolled: false, childCount: 0, node: tp,
+          effort: tp.effort, lead_days: tp.lead_days, actual_hours: tp.actual_hours, actual_days: tp.actual_days, start: tp.start, end: tp.end, rolled: false, childCount: 0, node: tp,
         });
         pushIssues(tp, 3, ph.color);
       }
@@ -72,6 +72,7 @@ function flatten(phases: TWbsPhase[], collapsed: Set<string>, openIssues: Set<st
 }
 
 const num = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(1));
+const fmtDays = (d: number) => (Number.isInteger(d) ? String(d) : d.toFixed(2).replace(/0$/, ""));
 
 function StatusChip({ node, row }: { node?: TWbsNode; row: TWbsRow }) {
   if (row.rolled && row.kind === "epic" && node?.touchpoints?.length) {
@@ -128,7 +129,7 @@ export const WbsSchedule = observer(function WbsSchedule({ slug, plan }: { slug:
     return buildTimeline(days, today);
   }, [tree, today]);
   const { cols, setWidth, commit, reset } = useColumns();
-  const detailW = cols.manDay + cols.effort + cols.lead + cols.start + cols.who + cols.status;
+  const detailW = cols.manDay + cols.effort + cols.lead + cols.actual + cols.start + cols.who + cols.status;
   const leftW = compact ? cols.name : cols.name + detailW;
   const canWrite = !!tree?.can_write;
 
@@ -291,6 +292,7 @@ export const WbsSchedule = observer(function WbsSchedule({ slug, plan }: { slug:
                   ["manDay", "Man-day", "pr-2 text-right"],
                   ["effort", "Effort", "pr-2 text-right"],
                   ["lead", "Lead", "pr-2 text-right"],
+                  ["actual", "Actual", "pr-2 text-right"],
                   ["start", "Start", "pl-2 text-left"],
                   ["who", "Assignee", "pl-2 text-left"],
                   ["status", "Status", "pl-2 text-left"],
@@ -298,7 +300,7 @@ export const WbsSchedule = observer(function WbsSchedule({ slug, plan }: { slug:
               )
                 .filter(([k]) => !(compact && k !== "name"))
                 .map(([k, label, cls]) => (
-                  <div key={k} className={cn("relative h-full flex-shrink-0 border-r border-subtle pb-2 whitespace-nowrap", "flex items-end", cls, cls.includes("right") && "justify-end")} style={{ width: cols[k] }}>
+                  <div key={k} title={k === "actual" ? `Actual working days: the effort hours of the linked work items ÷ ${tree.calendar.hours_per_day} hours per day` : k === "lead" ? "Planned duration in working days: Man-day ÷ Effort" : undefined} className={cn("relative h-full flex-shrink-0 border-r border-subtle pb-2 whitespace-nowrap", "flex items-end", cls, cls.includes("right") && "justify-end")} style={{ width: cols[k] }}>
                     <span className="truncate">{label}</span>
                     <ColResizer width={cols[k]} onChange={(w) => setWidth(k, w)} onDone={commit} onReset={() => reset(k)} />
                   </div>
@@ -354,6 +356,15 @@ export const WbsSchedule = observer(function WbsSchedule({ slug, plan }: { slug:
                           <div className="h-full flex-shrink-0 border-r border-subtle" style={{ width: cols.manDay }}><div className="flex h-full items-center">{dash}</div></div>
                           <div className="h-full flex-shrink-0 border-r border-subtle" style={{ width: cols.effort }}><div className="flex h-full items-center">{dash}</div></div>
                           <div className="h-full flex-shrink-0 border-r border-subtle" style={{ width: cols.lead }}><div className="flex h-full items-center">{dash}</div></div>
+                          <div className="flex h-full flex-shrink-0 items-center border-r border-subtle" style={{ width: cols.actual }}>
+                            <EditableCell align="right" type="number" min={0} step={0.5} readOnly={!canWrite} value={it.effort_hours === null ? "" : String(it.effort_hours)}
+                              title="Effort of this work item in hours (saved on the work item)"
+                              display={<span className={it.effort_hours === null ? "text-tertiary" : "text-secondary"}>{it.effort_hours === null ? "—" : `${num(it.effort_hours)}h`}</span>}
+                              onCommit={(v) => {
+                                const hours = v.trim() === "" ? null : Number(v);
+                                if (hours === null || (Number.isFinite(hours) && hours >= 0)) void run(() => wbsApi.setEffort(scope, it.project_id, it.id, hours));
+                              }} />
+                          </div>
                           <div className="flex h-full flex-shrink-0 items-center border-r border-subtle pl-2 text-[12px] text-secondary" style={{ width: cols.start }} title="Start date of the work item in Plane">{fmtDate(it.start)}</div>
                           <div className="flex h-full flex-shrink-0 items-center overflow-hidden border-r border-subtle" style={{ width: cols.who }}><AssigneeAvatars people={it.assignees} /></div>
                           <div className="flex h-full flex-shrink-0 items-center overflow-hidden border-r border-subtle px-1.5" style={{ width: cols.status }}>
@@ -426,6 +437,14 @@ export const WbsSchedule = observer(function WbsSchedule({ slug, plan }: { slug:
                             display={<span className="text-secondary">{Math.round(row.effort * 100)}%</span>}
                             onCommit={(v) => Number(v) > 0 && Number(v) <= 100 && patch({ effort: Number(v) / 100 })} />)}
                         {cell(cols.lead, <span className="w-full pr-1.5 text-right text-[13px] text-secondary" title={row.lead_days ? `${row.lead_days} working days` : undefined}>{row.lead_days ? `${row.lead_days}d` : "—"}</span>)}
+                        {cell(cols.actual, row.actual_hours > 0 ? (
+                          <span
+                            className={cn("w-full pr-1.5 text-right text-[13px]", row.man_day > 0 && row.actual_days > row.man_day ? "font-medium text-danger-primary" : "text-secondary")}
+                            title={`${num(row.actual_hours)} h = ${fmtDays(row.actual_days)} working days (${tree.calendar.hours_per_day} h per day)${row.man_day > 0 ? ` · planned ${num(row.man_day)} man-day` : ""}`}
+                          >
+                            {fmtDays(row.actual_days)}d
+                          </span>
+                        ) : <span className="w-full pr-1.5 text-right text-[13px] text-tertiary">—</span>)}
                         {cell(cols.start, <EditableCell type="date" readOnly={!canEditNumbers} value={node?.start_input ?? row.start ?? ""}
                           display={<span className={row.start ? "text-secondary" : "text-tertiary"} title={node?.start_input && node.start_input !== row.start ? `Entered ${fmtDate(node.start_input)}, a day off: work starts on the next working day` : undefined}>{fmtDate(row.start)}{node?.start_input && node.start_input !== row.start ? " *" : ""}</span>}
                           onCommit={(v) => patch({ start_date: v || null })} />, "pl-2")}

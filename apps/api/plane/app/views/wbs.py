@@ -53,6 +53,9 @@ class PlanInput(serializers.Serializer):
         child=serializers.IntegerField(min_value=0, max_value=6), required=False, min_length=1, max_length=7
     )
     holidays = serializers.ListField(child=serializers.DateField(), required=False, max_length=400)
+    hours_per_day = serializers.DecimalField(
+        max_digits=4, decimal_places=2, min_value=Decimal("0.5"), max_value=Decimal("24"), required=False
+    )
 
 
 class PhaseInput(serializers.Serializer):
@@ -212,6 +215,7 @@ def plan_out(plan, user):
         "hidden_projects": len(ids) - len(shown),  # projects of the plan that this user is not a member of
         "working_days": sorted(plan.working_days),
         "holidays": sorted(plan.holidays),
+        "hours_per_day": float(plan.hours_per_day),
     }
 
 
@@ -220,6 +224,8 @@ def apply_calendar(plan, v):
         plan.working_days = sorted(set(v["working_days"]))
     if "holidays" in v:
         plan.holidays = sorted({h.isoformat() for h in v["holidays"]})
+    if "hours_per_day" in v:
+        plan.hours_per_day = v["hours_per_day"]
 
 
 def set_plan_projects(plan, user, project_ids):
@@ -324,6 +330,7 @@ class WbsTreeEndpoint(BaseAPIView):
         ).exists()
         phases = list(WbsPhase.objects.filter(plan=plan_obj))
         cal = plan_calendar(plan_obj)
+        hpd = float(plan_obj.hours_per_day) or 8.0
 
         nodes = list(WbsNode.objects.filter(phase__plan=plan_obj))
         visible = plan_issues(request.user, plan_obj)
@@ -353,6 +360,7 @@ class WbsTreeEndpoint(BaseAPIView):
                 counts[l.issue.state.group if l.issue.state_id else "backlog"] += 1
                 who.update(assignees.get(l.issue_id, {}))
             label, group = node_status(counts)
+            hours = round(sum(float(l.issue.effort_hours or 0) for l in node_links), 2)
             return {
                 "id": str(n.id), "title": n.title, "man_day": float(n.man_day), "effort": float(n.effort),
                 "lead_days": days, "start": start, "end": end, "start_input": n.start_date,
@@ -362,11 +370,13 @@ class WbsTreeEndpoint(BaseAPIView):
                         "name": l.issue.name, "status": l.issue.state.name if l.issue.state_id else None,
                         "status_group": l.issue.state.group if l.issue.state_id else None,
                         "start": l.issue.start_date, "end": l.issue.target_date,
+                        "effort_hours": float(l.issue.effort_hours) if l.issue.effort_hours is not None else None,
                         "assignees": sorted(assignees.get(l.issue_id, {}).values(), key=lambda u: (u["name"] or "").lower()),
                     }
                     for l in node_links
                 ],
                 "issues_done": counts.get("completed", 0),
+                "actual_hours": hours, "actual_days": round(hours / hpd, 2),
                 "status": label, "status_group": group, "assignees": sorted(who.values(), key=lambda u: (u["name"] or "").lower()),
             }
 
@@ -375,6 +385,7 @@ class WbsTreeEndpoint(BaseAPIView):
             ends = [i["end"] for i in items if i["end"]]
             return {
                 "man_day": round(sum(i["man_day"] for i in items), 2),
+                "actual_hours": round(sum(i["actual_hours"] for i in items), 2),
                 "start": min(starts) if starts else None,
                 "end": max(ends) if ends else None,
             }
@@ -394,16 +405,21 @@ class WbsTreeEndpoint(BaseAPIView):
                     r = roll(tps)
                     e.update(r, rolled=True, children_done=sum(1 for t in tps if t["status_group"] == "completed"))
                     e["lead_days"] = cal.count(r["start"], r["end"])
+                    e["actual_days"] = round(e["actual_hours"] / hpd, 2)
                 e["touchpoints"] = tps
                 epics.append(e)
             r = roll(epics)
             out.append({
                 "id": str(ph.id), "name": ph.name, "color": ph.color, **r,
+                "actual_days": round(r["actual_hours"] / hpd, 2),
                 "lead_days": cal.count(r["start"], r["end"]), "epics": epics,
             })
         return Response({
             "today": date.today(),
-            "calendar": {"working_days": sorted(plan_obj.working_days), "holidays": sorted(plan_obj.holidays)},
+            "calendar": {
+                "working_days": sorted(plan_obj.working_days), "holidays": sorted(plan_obj.holidays),
+                "hours_per_day": float(plan_obj.hours_per_day),
+            },
             "can_write": can_write,
             "phases": out,
             "milestones": [

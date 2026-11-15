@@ -17,6 +17,7 @@ export type TWbsIssue = {
   status_group: TStatusGroup;
   start: string | null; // dates of the work item in Plane
   end: string | null;
+  effort_hours: number | null; // actual hours, entered on the work item
   assignees: TWbsPerson[];
 };
 
@@ -33,6 +34,8 @@ export type TWbsNode = {
   end: string | null;
   issues: TWbsIssue[]; // linked Plane work items (many per node)
   issues_done: number;
+  actual_hours: number; // the effort hours of the linked work items (the sum for a sum row)
+  actual_days: number; // actual_hours / hours per day
   status: string | null; // derived from the linked work items
   status_group: TStatusGroup;
   assignees: TWbsPerson[]; // everyone assigned to the linked work items
@@ -46,6 +49,8 @@ export type TWbsPhase = {
   name: string;
   color: string;
   man_day: number;
+  actual_hours: number;
+  actual_days: number;
   start: string | null;
   end: string | null;
   lead_days: number;
@@ -57,7 +62,7 @@ export type TWbsMilestone = { id: string; name: string; day: string };
 export type TWbsTree = {
   today: string;
   can_write: boolean;
-  calendar: { working_days: number[]; holidays: string[] };
+  calendar: { working_days: number[]; holidays: string[]; hours_per_day: number };
   phases: TWbsPhase[];
   milestones: TWbsMilestone[];
 };
@@ -73,6 +78,8 @@ export type TWbsRow = {
   man_day: number;
   effort: number | null; // null for phases
   lead_days: number;
+  actual_hours: number;
+  actual_days: number;
   start: string | null;
   end: string | null;
   rolled: boolean; // computed from children: not editable
@@ -91,6 +98,7 @@ export type TWbsPlan = {
   hidden_projects: number; // projects of the plan the user is not a member of
   working_days: number[]; // Monday is 0
   holidays: string[]; // ISO dates that are not worked
+  hours_per_day: number; // length of a working day
 };
 
 export type TWbsPlanList = { can_write: boolean; plans: TWbsPlan[] };

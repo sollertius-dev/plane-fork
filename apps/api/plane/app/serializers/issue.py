@@ -97,6 +97,10 @@ class IssueCreateSerializer(BaseSerializer):
         write_only=True,
         required=False,
     )
+    # Sollertius: a plain number in the JSON, not a string
+    effort_hours = serializers.DecimalField(
+        max_digits=7, decimal_places=2, min_value=0, coerce_to_string=False, required=False, allow_null=True
+    )
     project_id = serializers.UUIDField(source="project.id", read_only=True)
     workspace_id = serializers.UUIDField(source="workspace.id", read_only=True)
 
@@ -782,6 +786,10 @@ class IssueSerializer(DynamicBaseSerializer):
     cycle_id = serializers.PrimaryKeyRelatedField(read_only=True)
     module_ids = serializers.ListField(child=serializers.UUIDField(), required=False)
 
+    effort_hours = serializers.DecimalField(
+        max_digits=7, decimal_places=2, coerce_to_string=False, read_only=True, allow_null=True
+    )
+
     # Many to many
     label_ids = serializers.ListField(child=serializers.UUIDField(), required=False)
     assignee_ids = serializers.ListField(child=serializers.UUIDField(), required=False)
@@ -800,6 +808,7 @@ class IssueSerializer(DynamicBaseSerializer):
             "sort_order",
             "completed_at",
             "estimate_point",
+            "effort_hours",
             "priority",
             "start_date",
             "target_date",

@@ -55,6 +55,7 @@ export function WbsGuideline() {
             <Row a="Man-day" b="The work to do, in days of one person. You enter it on the lowest row." />
             <Row a="Effort" b="The share of a person's time given to the row, from 1% to 100%. 50% means half of the working time." />
             <Row a="Lead" b="How long the row takes, in working days: Man-day ÷ Effort, rounded up. 6 man-days at 50% is 12 working days. You cannot type it. Change Man-day or Effort instead." />
+            <Row a="Actual" b="The days the work really took, in working days: the Effort (hours) entered on the linked work items, added up, ÷ the hours per working day of this WBS (8 by default). It is red when it is more than the planned Man-day. It is not a plan: you never type it here." />
             <Row a="Start" b="The first day of the row. You enter it. The end is the last working day of the Lead. If you enter a day off, the row starts on the next working day and the date is marked with *." />
             <Row a="Assignee, Status" b="Taken from the linked work items (see below). You do not type them. Assignees are shown as round avatars (up to three, then +N). Hover for the names." />
             <Row a="Bars" b="One bar per row, coloured by phase. A darker, thicker bar is a touch point, a lighter one an epic, a thin one the whole phase. A tick on a touch point means all its work items are done." />
@@ -94,6 +95,20 @@ export function WbsGuideline() {
           <Li><B>Add a milestone:</B> press <B>+ Milestone</B>, type a name, pick the date, press Add. To remove one, click its flag at the top. A milestone cannot be edited yet: remove it and add it again.</Li>
           <Li><B>Collapse or expand:</B> the arrow in front of a row, or <B>Collapse all</B> and <B>Expand all</B>.</Li>
           <Li><B>Hide details:</B> keeps only the names, which leaves more room for the timeline.</Li>
+        </ul>
+
+        <H>Planned and actual</H>
+        <P>
+          Man-day, Effort and Lead are the <B>plan</B>. <B>Actual</B> is what happened. A work item can run for three
+          days between its start and due date and still take only 8 hours of work, for example when it waited for
+          something. So the days between the dates say little about the work, and the hours do.
+        </P>
+        <ul className="mb-2 ml-5 list-disc">
+          <Li>Enter the hours on the work item itself: open it and fill <B>Effort (hours)</B> under Properties, next to Estimate. You can also type it in the Actual cell of the grey work item rows of this page. Both save on the work item.</Li>
+          <Li>Actual of a touch point is the sum of the hours of its work items. An epic or a phase shows the sum of what is below it.</Li>
+          <Li>Actual in days is hours ÷ <B>hours per working day</B>, a setting of the WBS (Edit, default 8). With 6 hours per day, 12 hours are 2 days.</Li>
+          <Li>A work item with no hours counts as zero. The cell shows a dash until some hours are entered.</Li>
+          <Li>The effort is not the same as <B>Effort</B> (the % column), which is how much of a person's time the plan gives to the row.</Li>
         </ul>
 
         <H>Resizing the table</H>
@@ -142,6 +157,7 @@ export function WbsGuideline() {
         <H>Questions you may have</H>
         <table className="mb-8 w-full">
           <tbody>
+            <Row a="Actual is empty." b="No linked work item has Effort (hours) yet. Open a work item and fill it in, or type the hours in its grey row here." />
             <Row a="Why can't I edit the Lead?" b="Lead is calculated. Change Man-day or Effort, or move the Start." />
             <Row a="Why did my Start date change?" b="You entered a day off of this WBS (for example a Saturday). The row starts on the next working day. Change the working days with Edit if you do work on that day." />
             <Row a="Our team works on Saturdays." b="Press Edit at the top right and switch Sat on in Working days. Add public holidays under Days off." />

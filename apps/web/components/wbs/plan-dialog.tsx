@@ -27,6 +27,7 @@ export function PlanDialog({ slug, plan, onSaved, onDeleted, onClose }: Props) {
   const [workDays, setWorkDays] = useState<Set<number>>(new Set(plan?.working_days ?? DEFAULT_WORKING_DAYS));
   const [holidays, setHolidays] = useState<string[]>(plan?.holidays ?? []);
   const [newHoliday, setNewHoliday] = useState("");
+  const [hoursPerDay, setHoursPerDay] = useState(String(plan?.hours_per_day ?? 8));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -60,9 +61,11 @@ export function PlanDialog({ slug, plan, onSaved, onDeleted, onClose }: Props) {
   const save = async () => {
     if (!name.trim()) return setError("Give the WBS a name.");
     if (workDays.size === 0) return setError("Choose at least one working day.");
+    const hours = Number(hoursPerDay);
+    if (!Number.isFinite(hours) || hours < 0.5 || hours > 24) return setError("Hours per working day must be between 0.5 and 24.");
     setBusy(true);
     try {
-      const body = { name: name.trim(), project_ids: [...picked], working_days: [...workDays].sort(), holidays };
+      const body = { name: name.trim(), project_ids: [...picked], working_days: [...workDays].sort(), holidays, hours_per_day: hours };
       onSaved(plan ? await wbsPlanApi.update(slug, plan.id, body) : await wbsPlanApi.create(slug, body));
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -145,6 +148,17 @@ export function PlanDialog({ slug, plan, onSaved, onDeleted, onClose }: Props) {
               </button>
             ))}
           </div>
+          <p className="mt-4 mb-1 text-[12px] font-medium text-secondary">Hours per working day</p>
+          <p className="mb-2 text-[12px] text-tertiary">Turns the effort hours of work items into days in the Actual column.</p>
+          <input
+            type="number"
+            min={0.5}
+            max={24}
+            step={0.5}
+            value={hoursPerDay}
+            onChange={(e) => setHoursPerDay(e.target.value)}
+            className="h-8 w-24 rounded-sm border border-subtle bg-surface-1 px-2 text-[13px] text-primary outline-none focus:border-accent-strong"
+          />
           <p className="mt-4 mb-1 text-[12px] font-medium text-secondary">Days off (holidays)</p>
           <div className="flex items-center gap-2">
             <input

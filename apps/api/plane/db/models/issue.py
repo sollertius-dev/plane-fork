@@ -133,6 +133,10 @@ class Issue(ChangeTrackerMixin, ProjectBaseModel):
         null=True,
         blank=True,
     )
+    # Sollertius: the hours the work really took, which can be far less than the days between start and due date
+    effort_hours = models.DecimalField(
+        max_digits=7, decimal_places=2, null=True, blank=True, validators=[MinValueValidator(0)]
+    )
     name = models.CharField(max_length=255, verbose_name="Issue Name")
     description_json = models.JSONField(blank=True, default=dict)
     description_html = models.TextField(blank=True, default="<p></p>")

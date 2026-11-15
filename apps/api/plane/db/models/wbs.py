@@ -23,6 +23,8 @@ class WbsPlan(BaseModel):
     # Working calendar: lead time is counted in working days. Weekdays use Python's numbering, Monday is 0.
     working_days = models.JSONField(default=default_working_days)
     holidays = models.JSONField(default=list)  # ISO dates that are not worked, whatever the weekday
+    # Length of a working day, to turn the effort hours of work items into days
+    hours_per_day = models.DecimalField(max_digits=4, decimal_places=2, default=8)
 
     class Meta:
         verbose_name = "WBS plan"
