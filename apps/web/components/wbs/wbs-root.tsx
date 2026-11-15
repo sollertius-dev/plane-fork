@@ -18,7 +18,7 @@ import { buildTimeline, dayOfMonth, DAY_PX, fmtDate, mondayOnOrBefore, monthKey,
 import type { TStatusGroup, TWbsNode, TWbsPhase, TWbsRow } from "./types";
 import { useWbs } from "./use-wbs";
 
-const ROW_H = { phase: 38, epic: 34, touchpoint: 34 } as const;
+const ROW_H = { phase: 38, epic: 34, touchpoint: 34, issue: 30 } as const;
 const HEAD_H = 72; // months + weeks + milestone flags
 
 const STATUS_STYLE: Record<string, { bg: string; fg: string }> = {
@@ -29,8 +29,18 @@ const STATUS_STYLE: Record<string, { bg: string; fg: string }> = {
   cancelled: { bg: "rgba(239,68,68,.16)", fg: "#b91c1c" },
 };
 
-function flatten(phases: TWbsPhase[], collapsed: Set<string>): TWbsRow[] {
+function flatten(phases: TWbsPhase[], collapsed: Set<string>, openIssues: Set<string>): TWbsRow[] {
   const rows: TWbsRow[] = [];
+  // the work items linked to a node, shown under it when the node is opened
+  const pushIssues = (node: TWbsNode, depth: number, color: string) => {
+    if (!openIssues.has(node.id)) return;
+    for (const it of node.issues) {
+      rows.push({
+        kind: "issue", id: `${node.id}:${it.id}`, depth, title: it.name, color, man_day: 0, effort: null, lead_days: 0,
+        start: it.start, end: it.end, rolled: false, childCount: 0, issue: it, nodeId: node.id,
+      });
+    }
+  };
   for (const ph of phases) {
     rows.push({
       kind: "phase", id: ph.id, depth: 0, title: ph.name, color: ph.color, man_day: ph.man_day, effort: null,
@@ -44,12 +54,14 @@ function flatten(phases: TWbsPhase[], collapsed: Set<string>): TWbsRow[] {
         effort: ep.rolled ? null : ep.effort, lead_days: ep.lead_days, start: ep.start, end: ep.end,
         rolled: !!ep.rolled, childCount: tps.length, node: ep,
       });
+      if (tps.length === 0) pushIssues(ep, 2, ph.color);
       if (collapsed.has(ep.id)) continue;
       for (const tp of tps) {
         rows.push({
           kind: "touchpoint", id: tp.id, depth: 2, title: tp.title, color: ph.color, man_day: tp.man_day,
           effort: tp.effort, lead_days: tp.lead_days, start: tp.start, end: tp.end, rolled: false, childCount: 0, node: tp,
         });
+        pushIssues(tp, 3, ph.color);
       }
     }
   }
@@ -82,13 +94,14 @@ export function WbsSchedule({ slug, plan }: { slug: string; plan: string }) {
   const scope = useMemo(() => ({ slug, plan }), [slug, plan]);
   const { tree, error, loading, run, clearError } = useWbs(scope);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  const [openIssues, setOpenIssues] = useState<Set<string>>(new Set());
   const [compact, setCompact] = useState(false);
   const [autoEditId, setAutoEditId] = useState<string | null>(null);
   const [msForm, setMsForm] = useState<{ name: string; day: string } | null>(null);
   const scroller = useRef<HTMLDivElement>(null);
   const scrolled = useRef(false);
 
-  const rows = useMemo(() => (tree ? flatten(tree.phases, collapsed) : []), [tree, collapsed]);
+  const rows = useMemo(() => (tree ? flatten(tree.phases, collapsed, openIssues) : []), [tree, collapsed, openIssues]);
   const today = tree ? toDay(tree.today) : toDay(new Date().toISOString().slice(0, 10));
   const tl = useMemo(() => {
     const days: number[] = [];
@@ -128,6 +141,23 @@ export function WbsSchedule({ slug, plan }: { slug: string; plan: string }) {
       else next.add(id);
       return next;
     });
+  const toggleIssues = (id: string) =>
+    setOpenIssues((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  const nodesWithIssues = useMemo(() => {
+    const ids: string[] = [];
+    tree?.phases.forEach((p) =>
+      p.epics.forEach((e) => {
+        if (e.issues.length) ids.push(e.id);
+        e.touchpoints?.forEach((t) => (t.issues.length ? ids.push(t.id) : null));
+      })
+    );
+    return ids;
+  }, [tree]);
   const allParents = useMemo(() => {
     const ids: string[] = [];
     tree?.phases.forEach((p) => {
@@ -211,7 +241,7 @@ export function WbsSchedule({ slug, plan }: { slug: string; plan: string }) {
         {canWrite ? <button type="button" className={btn} onClick={addPhase}>+ Phase</button> : null}
         {canWrite ? <button type="button" className={btn} onClick={() => setMsForm(msForm ? null : { name: "", day: tree.today })}>+ Milestone</button> : null}
         <button type="button" className={btn} onClick={scrollToToday}>Today</button>
-        <button type="button" className={btn} onClick={() => setCollapsed(collapsed.size ? new Set() : new Set(allParents))}>{collapsed.size ? "Expand all" : "Collapse all"}</button>
+        <button type="button" className={btn} onClick={() => { if (collapsed.size) { setCollapsed(new Set()); setOpenIssues(new Set(nodesWithIssues)); } else { setCollapsed(new Set(allParents)); setOpenIssues(new Set()); } }}>{collapsed.size ? "Expand all" : "Collapse all"}</button>
         <button type="button" className={btn} onClick={() => setCompact((v) => !v)}>{compact ? "Show details" : "Hide details"}</button>
         {msForm ? (
           <span className="flex items-center gap-1.5">
@@ -287,6 +317,47 @@ export function WbsSchedule({ slug, plan }: { slug: string; plan: string }) {
           {/* rows */}
           <div className="relative">
             {rows.map((row) => {
+              if (row.kind === "issue" && row.issue) {
+                const it = row.issue;
+                const st = STATUS_STYLE[(it.status_group ?? "backlog") as Exclude<TStatusGroup, null>] ?? STATUS_STYLE.backlog;
+                const dash = <span className="w-full pr-1.5 text-right text-[13px] text-tertiary">—</span>;
+                const hasBar = !!(it.start && it.end);
+                const x = hasBar ? xOf(tl, toDay(it.start as string)) : 0;
+                const w = hasBar ? Math.max((toDay(it.end as string) - toDay(it.start as string) + 1) * DAY_PX, DAY_PX) : 0;
+                return (
+                  <div key={row.id} className="group flex" style={{ height: ROW_H.issue }}>
+                    <div className="sticky left-0 z-10 flex flex-shrink-0 items-center border-r border-b border-subtle bg-surface-1 group-hover:bg-layer-1" style={{ width: leftW }}>
+                      <div className="relative flex h-full flex-shrink-0 items-center gap-2 overflow-hidden border-r border-subtle" style={{ width: cols.name, paddingLeft: 8 + row.depth * 18 + 24, paddingRight: canWrite ? 30 : 4 }}>
+                        <a href={`/${slug}/browse/${it.ref}/`} target="_blank" rel="noreferrer" className="flex-shrink-0 text-[11px] font-medium text-tertiary hover:text-primary hover:underline">{it.ref}</a>
+                        <span className="truncate text-[12px] text-secondary" title={it.name}>{it.name}</span>
+                        {canWrite ? (
+                          <button type="button" title="Unlink this work item" onClick={() => run(() => wbsApi.unlinkIssue(scope, row.nodeId as string, it.id))} className="absolute right-1 hidden size-6 items-center justify-center rounded-sm bg-layer-1 text-[12px] text-tertiary group-hover:flex hover:text-danger-primary">✕</button>
+                        ) : null}
+                      </div>
+                      {compact ? null : (
+                        <>
+                          <div className="h-full flex-shrink-0 border-r border-subtle" style={{ width: cols.manDay }}><div className="flex h-full items-center">{dash}</div></div>
+                          <div className="h-full flex-shrink-0 border-r border-subtle" style={{ width: cols.effort }}><div className="flex h-full items-center">{dash}</div></div>
+                          <div className="h-full flex-shrink-0 border-r border-subtle" style={{ width: cols.lead }}><div className="flex h-full items-center">{dash}</div></div>
+                          <div className="flex h-full flex-shrink-0 items-center border-r border-subtle pl-2 text-[12px] text-secondary" style={{ width: cols.start }} title="Start date of the work item in Plane">{fmtDate(it.start)}</div>
+                          <div className="flex h-full flex-shrink-0 items-center overflow-hidden border-r border-subtle" style={{ width: cols.who }}><AssigneeAvatars people={it.assignees} /></div>
+                          <div className="flex h-full flex-shrink-0 items-center overflow-hidden border-r border-subtle px-1.5" style={{ width: cols.status }}>
+                            {it.status ? <span className="truncate rounded-full px-2 py-0.5 text-[11px] font-medium" style={{ background: st.bg, color: st.fg }}>{it.status}</span> : <span className="text-[12px] text-tertiary">—</span>}
+                          </div>
+                        </>
+                      )}
+                    </div>
+                    <div className="relative flex-shrink-0 border-b border-subtle" style={{ width: tl.width, ...gridBg }}>
+                      {hasBar ? (
+                        <div className="absolute top-1/2 -translate-y-1/2 rounded-[3px] border" title={`${it.ref}: ${fmtDate(it.start)} → ${fmtDate(it.end)} (dates in Plane)`} style={{ left: x, width: w, height: 8, borderColor: row.color, background: `${row.color}40` }} />
+                      ) : null}
+                    </div>
+                  </div>
+                );
+              }
+              const nodeIssues = row.node?.issues.length ?? 0;
+              const expandable = row.kind === "phase" ? row.childCount > 0 : row.childCount > 0 || nodeIssues > 0;
+              const opensIssues = row.kind !== "phase" && row.childCount === 0;
               const isLeaf = row.kind === "touchpoint" || (row.kind === "epic" && !row.rolled);
               const node = row.node;
               const canEditNumbers = canWrite && isLeaf;
@@ -303,9 +374,9 @@ export function WbsSchedule({ slug, plan }: { slug: string; plan: string }) {
                   <div className={cn("sticky left-0 z-10 flex flex-shrink-0 items-center border-r border-b border-subtle group-hover:bg-layer-1", row.kind === "phase" ? "bg-layer-1" : "bg-surface-1")} style={{ width: leftW }}>
                     {/* name */}
                     <div className="relative flex h-full flex-shrink-0 items-center gap-1 overflow-hidden border-r border-subtle" style={{ width: cols.name, paddingLeft: 8 + row.depth * 18, paddingRight: canWrite ? 58 : 4 }}>
-                      {row.childCount > 0 || row.kind !== "touchpoint" ? (
-                        <button type="button" onClick={() => toggle(row.id)} className="flex size-5 flex-shrink-0 items-center justify-center rounded-sm text-tertiary hover:bg-layer-2 hover:text-primary" aria-label="Expand or collapse">
-                          <Chevron open={!collapsed.has(row.id)} />
+                      {expandable ? (
+                        <button type="button" onClick={() => (opensIssues ? toggleIssues(row.id) : toggle(row.id))} className="flex size-5 flex-shrink-0 items-center justify-center rounded-sm text-tertiary hover:bg-layer-2 hover:text-primary" aria-label={opensIssues ? "Show or hide the linked work items" : "Expand or collapse"} title={opensIssues ? "Show or hide the linked work items" : undefined}>
+                          <Chevron open={opensIssues ? openIssues.has(row.id) : !collapsed.has(row.id)} />
                         </button>
                       ) : <span className="size-5 flex-shrink-0" />}
                       {row.kind === "phase" ? (

@@ -14,6 +14,9 @@ export type TWbsIssue = {
   name: string;
   status: string | null;
   status_group: TStatusGroup;
+  start: string | null; // dates of the work item in Plane
+  end: string | null;
+  assignees: TWbsPerson[];
 };
 
 export type TWbsPerson = { id: string; name: string; avatar: string | null };
@@ -58,7 +61,7 @@ export type TWbsTree = {
   milestones: TWbsMilestone[];
 };
 
-export type TRowKind = "phase" | "epic" | "touchpoint";
+export type TRowKind = "phase" | "epic" | "touchpoint" | "issue";
 
 export type TWbsRow = {
   kind: TRowKind;
@@ -74,6 +77,8 @@ export type TWbsRow = {
   rolled: boolean; // computed from children: not editable
   childCount: number;
   node?: TWbsNode;
+  issue?: TWbsIssue; // for rows of kind issue: a work item linked to the node above
+  nodeId?: string;
 };
 
 export type TWbsProject = { id: string; identifier: string; name: string };
