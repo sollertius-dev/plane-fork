@@ -10,10 +10,46 @@ from django.db import models
 from .base import BaseModel
 
 
+class WbsPlan(BaseModel):
+    """One WBS schedule. A workspace can have several, each tied to its own projects."""
+
+    workspace = models.ForeignKey("db.Workspace", on_delete=models.CASCADE, related_name="wbs_plans")
+    name = models.CharField(max_length=120)
+    sort_order = models.FloatField(default=65535)
+
+    class Meta:
+        verbose_name = "WBS plan"
+        verbose_name_plural = "WBS plans"
+        db_table = "wbs_plans"
+        ordering = ("sort_order", "created_at")
+
+
+class WbsPlanProject(BaseModel):
+    """A project that a WBS plan may use. Only work items of these projects can be linked to the plan."""
+
+    workspace = models.ForeignKey("db.Workspace", on_delete=models.CASCADE, related_name="wbs_plan_projects")
+    plan = models.ForeignKey(WbsPlan, on_delete=models.CASCADE, related_name="plan_projects")
+    project = models.ForeignKey("db.Project", on_delete=models.CASCADE, related_name="wbs_plan_links")
+
+    class Meta:
+        verbose_name = "WBS plan project"
+        verbose_name_plural = "WBS plan projects"
+        db_table = "wbs_plan_projects"
+        ordering = ("created_at",)
+        constraints = [
+            models.UniqueConstraint(
+                fields=["plan", "project"],
+                condition=models.Q(deleted_at__isnull=True),
+                name="wbs_plan_project_unique_when_not_deleted",
+            )
+        ]
+
+
 class WbsPhase(BaseModel):
     """Top level of the WBS schedule (for example Foundation, Market data)."""
 
     workspace = models.ForeignKey("db.Workspace", on_delete=models.CASCADE, related_name="wbs_phases")
+    plan = models.ForeignKey(WbsPlan, on_delete=models.CASCADE, related_name="phases")
     name = models.CharField(max_length=120)
     color = models.CharField(max_length=7, default="#3b82f6")
     sort_order = models.FloatField(default=65535)
@@ -27,6 +63,7 @@ class WbsPhase(BaseModel):
 
 class WbsMilestone(BaseModel):
     workspace = models.ForeignKey("db.Workspace", on_delete=models.CASCADE, related_name="wbs_milestones")
+    plan = models.ForeignKey(WbsPlan, on_delete=models.CASCADE, related_name="milestones")
     name = models.CharField(max_length=120)
     day = models.DateField()
 

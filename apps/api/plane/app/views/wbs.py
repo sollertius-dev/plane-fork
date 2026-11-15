@@ -2,7 +2,10 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 # See the LICENSE file for details.
 
-"""WBS schedule: phases, epics and touch points with man-day, effort and lead time.
+"""WBS schedules: phases, epics and touch points with man-day, effort and lead time.
+
+A workspace has several WBS plans. Each plan is tied to a set of projects, and only work items of those
+projects can be linked to it.
 
 The tree is read in one call. Lead time (man_day / effort), roll-ups and the status of a
 node (from its linked work items) are calculated here and never stored.
@@ -27,6 +30,7 @@ from plane.app.views.base import BaseAPIView
 from plane.db.models import (
     Issue,
     IssueAssignee,
+    Project,
     ProjectMember,
     Workspace,
     WorkspaceMember,
@@ -34,16 +38,19 @@ from plane.db.models import (
     WbsNode,
     WbsNodeIssue,
     WbsPhase,
+    WbsPlan,
+    WbsPlanProject,
 )
 
 READ = [ROLE.ADMIN, ROLE.MEMBER, ROLE.GUEST]
 WRITE = [ROLE.ADMIN, ROLE.MEMBER]
 
-# The phases a workspace starts with (draft in docs/plans/001-wbs-extension-plan.md)
-DEFAULT_PHASES = [("Foundation", "#3b82f6"), ("Market data", "#10b981"), ("Analysis", "#f59e0b"), ("News", "#a855f7")]
-
-
 # ---------------------------------------------------------------- input validation
+class PlanInput(serializers.Serializer):
+    name = serializers.CharField(max_length=120, required=False)
+    project_ids = serializers.ListField(child=serializers.UUIDField(), required=False, max_length=200)
+
+
 class PhaseInput(serializers.Serializer):
     name = serializers.CharField(max_length=120, required=False)
     color = serializers.RegexField(r"^#[0-9a-fA-F]{6}$", required=False)
@@ -82,12 +89,29 @@ def span(start, days):
     return start, start + timedelta(days=max(days, 1) - 1)
 
 
-def visible_issues(user, workspace_id):
-    """Work items of projects the user is a member of: the same visibility rule as the rest of Plane."""
-    project_ids = ProjectMember.objects.filter(
-        member=user, workspace_id=workspace_id, is_active=True
-    ).values_list("project_id", flat=True)
-    return Issue.issue_objects.filter(workspace_id=workspace_id, project_id__in=project_ids)
+def member_projects(user, workspace_id):
+    """Projects of the workspace that the user is a member of: what the user may see and offer to a plan."""
+    ids = ProjectMember.objects.filter(member=user, workspace_id=workspace_id, is_active=True).values_list(
+        "project_id", flat=True
+    )
+    return Project.objects.filter(workspace_id=workspace_id, id__in=ids)
+
+
+def get_plan(slug, plan_id):
+    return WbsPlan.objects.filter(workspace__slug=slug, pk=plan_id).first()
+
+
+def plan_issues(user, plan):
+    """Work items a plan may use: projects of the plan AND projects the user belongs to."""
+    plan_project_ids = WbsPlanProject.objects.filter(plan=plan).values_list("project_id", flat=True)
+    return Issue.issue_objects.filter(
+        workspace_id=plan.workspace_id,
+        project_id__in=member_projects(user, plan.workspace_id).filter(id__in=plan_project_ids).values_list("id", flat=True),
+    )
+
+
+def not_found():
+    return Response({"error": "Not found"}, status=status.HTTP_404_NOT_FOUND)
 
 
 def next_sort_order(model, **filters):
@@ -123,26 +147,129 @@ def delete_node_tree(node):
     node.delete()
 
 
-# ---------------------------------------------------------------- tree
-class WbsTreeEndpoint(BaseAPIView):
+def delete_phase_tree(phase):
+    for epic in WbsNode.objects.filter(phase=phase, parent__isnull=True):
+        delete_node_tree(epic)
+    phase.delete()
+
+
+# ---------------------------------------------------------------- plans
+def plan_out(plan, user):
+    mine = {p.id: p for p in member_projects(user, plan.workspace_id)}
+    ids = list(WbsPlanProject.objects.filter(plan=plan).values_list("project_id", flat=True))
+    shown = [mine[i] for i in ids if i in mine]
+    return {
+        "id": str(plan.id), "name": plan.name,
+        "projects": [{"id": str(p.id), "identifier": p.identifier, "name": p.name} for p in shown],
+        "hidden_projects": len(ids) - len(shown),  # projects of the plan that this user is not a member of
+    }
+
+
+def set_plan_projects(plan, user, project_ids):
+    """Make the plan's projects exactly project_ids. Only projects the user belongs to can be added."""
+    allowed = {p.id for p in member_projects(user, plan.workspace_id)}
+    wanted = set(project_ids)
+    # projects the user cannot see stay as they are: a member cannot add or drop what they do not see
+    if not wanted <= allowed:
+        return False
+    current = {pp.project_id: pp for pp in WbsPlanProject.objects.filter(plan=plan)}
+    for pid in wanted - set(current):
+        WbsPlanProject.objects.create(workspace_id=plan.workspace_id, plan=plan, project_id=pid)
+    for pid, pp in current.items():
+        if pid in allowed and pid not in wanted:
+            pp.delete()
+    return True
+
+
+class WbsProjectsEndpoint(BaseAPIView):
+    @allow_permission(allowed_roles=WRITE, level="WORKSPACE")
+    def get(self, request, slug):
+        workspace = Workspace.objects.get(slug=slug)
+        return Response([
+            {"id": str(p.id), "identifier": p.identifier, "name": p.name}
+            for p in member_projects(request.user, workspace.id).order_by("name")
+        ])
+
+
+class WbsPlanEndpoint(BaseAPIView):
     @allow_permission(allowed_roles=READ, level="WORKSPACE")
     def get(self, request, slug):
         workspace = Workspace.objects.get(slug=slug)
         can_write = WorkspaceMember.objects.filter(
             workspace=workspace, member=request.user, is_active=True, role__in=[r.value for r in WRITE]
         ).exists()
-        phases = list(WbsPhase.objects.filter(workspace=workspace))
-        if not phases:
-            with transaction.atomic():
-                if WbsPhase.objects.select_for_update().filter(workspace=workspace).count() == 0:
-                    for i, (name, color) in enumerate(DEFAULT_PHASES):
-                        WbsPhase.objects.create(workspace=workspace, name=name, color=color, sort_order=65535 + i * 10000)
-            phases = list(WbsPhase.objects.filter(workspace=workspace))
+        return Response({
+            "can_write": can_write,
+            "plans": [plan_out(p, request.user) for p in WbsPlan.objects.filter(workspace=workspace)],
+        })
 
-        nodes = list(WbsNode.objects.filter(workspace=workspace))
-        visible = visible_issues(request.user, workspace.id)
+    @allow_permission(allowed_roles=WRITE, level="WORKSPACE")
+    def post(self, request, slug):
+        data = PlanInput(data=request.data)
+        data.is_valid(raise_exception=True)
+        v = data.validated_data
+        if not v.get("name"):
+            return Response({"error": "name is required"}, status=status.HTTP_400_BAD_REQUEST)
+        workspace = Workspace.objects.get(slug=slug)
+        with transaction.atomic():
+            plan = WbsPlan.objects.create(
+                workspace=workspace, name=v["name"], sort_order=next_sort_order(WbsPlan, workspace=workspace)
+            )
+            if not set_plan_projects(plan, request.user, v.get("project_ids", [])):
+                transaction.set_rollback(True)
+                return Response({"error": "Unknown project"}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(plan_out(plan, request.user), status=status.HTTP_201_CREATED)
+
+    @allow_permission(allowed_roles=WRITE, level="WORKSPACE")
+    def patch(self, request, slug, plan):
+        data = PlanInput(data=request.data)
+        data.is_valid(raise_exception=True)
+        v = data.validated_data
+        obj = get_plan(slug, plan)
+        if not obj:
+            return not_found()
+        with transaction.atomic():
+            if "name" in v:
+                obj.name = v["name"]
+                obj.save()
+            if "project_ids" in v and not set_plan_projects(obj, request.user, v["project_ids"]):
+                transaction.set_rollback(True)
+                return Response({"error": "Unknown project"}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(plan_out(obj, request.user))
+
+    @allow_permission(allowed_roles=WRITE, level="WORKSPACE")
+    def delete(self, request, slug, plan):
+        obj = get_plan(slug, plan)
+        if not obj:
+            return not_found()
+        with transaction.atomic():
+            for ph in WbsPhase.objects.filter(plan=obj):
+                delete_phase_tree(ph)
+            for m in WbsMilestone.objects.filter(plan=obj):
+                m.delete()
+            for pp in WbsPlanProject.objects.filter(plan=obj):
+                pp.delete()
+            obj.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+# ---------------------------------------------------------------- tree
+class WbsTreeEndpoint(BaseAPIView):
+    @allow_permission(allowed_roles=READ, level="WORKSPACE")
+    def get(self, request, slug, plan):
+        plan_obj = get_plan(slug, plan)
+        if not plan_obj:
+            return not_found()
+        workspace = plan_obj.workspace
+        can_write = WorkspaceMember.objects.filter(
+            workspace=workspace, member=request.user, is_active=True, role__in=[r.value for r in WRITE]
+        ).exists()
+        phases = list(WbsPhase.objects.filter(plan=plan_obj))
+
+        nodes = list(WbsNode.objects.filter(phase__plan=plan_obj))
+        visible = plan_issues(request.user, plan_obj)
         links = (
-            WbsNodeIssue.objects.filter(workspace=workspace, issue__in=visible)
+            WbsNodeIssue.objects.filter(node__phase__plan=plan_obj, issue__in=visible)
             .select_related("issue", "issue__state", "issue__project")
             .order_by("created_at")
         )
@@ -214,7 +341,7 @@ class WbsTreeEndpoint(BaseAPIView):
             "can_write": can_write,
             "phases": out,
             "milestones": [
-                {"id": str(m.id), "name": m.name, "day": m.day} for m in WbsMilestone.objects.filter(workspace=workspace)
+                {"id": str(m.id), "name": m.name, "day": m.day} for m in WbsMilestone.objects.filter(plan=plan_obj)
             ],
         })
 
@@ -222,54 +349,57 @@ class WbsTreeEndpoint(BaseAPIView):
 # ---------------------------------------------------------------- phases
 class WbsPhaseEndpoint(BaseAPIView):
     @allow_permission(allowed_roles=WRITE, level="WORKSPACE")
-    def post(self, request, slug):
+    def post(self, request, slug, plan):
         data = PhaseInput(data=request.data)
         data.is_valid(raise_exception=True)
         if "name" not in data.validated_data:
             return Response({"error": "name is required"}, status=status.HTTP_400_BAD_REQUEST)
-        workspace = Workspace.objects.get(slug=slug)
+        plan_obj = get_plan(slug, plan)
+        if not plan_obj:
+            return not_found()
         ph = WbsPhase.objects.create(
-            workspace=workspace, name=data.validated_data["name"], color=data.validated_data.get("color", "#64748b"),
-            sort_order=next_sort_order(WbsPhase, workspace=workspace),
+            workspace=plan_obj.workspace, plan=plan_obj, name=data.validated_data["name"],
+            color=data.validated_data.get("color", "#64748b"), sort_order=next_sort_order(WbsPhase, plan=plan_obj),
         )
         return Response({"id": str(ph.id)}, status=status.HTTP_201_CREATED)
 
     @allow_permission(allowed_roles=WRITE, level="WORKSPACE")
-    def patch(self, request, slug, pk):
+    def patch(self, request, slug, plan, pk):
         data = PhaseInput(data=request.data)
         data.is_valid(raise_exception=True)
-        ph = WbsPhase.objects.filter(workspace__slug=slug, pk=pk).first()
+        ph = WbsPhase.objects.filter(plan_id=plan, workspace__slug=slug, pk=pk).first()
         if not ph:
-            return Response({"error": "Not found"}, status=status.HTTP_404_NOT_FOUND)
+            return not_found()
         for k, v in data.validated_data.items():
             setattr(ph, k, v)
         ph.save()
         return Response({"ok": True})
 
     @allow_permission(allowed_roles=WRITE, level="WORKSPACE")
-    def delete(self, request, slug, pk):
-        ph = WbsPhase.objects.filter(workspace__slug=slug, pk=pk).first()
+    def delete(self, request, slug, plan, pk):
+        ph = WbsPhase.objects.filter(plan_id=plan, workspace__slug=slug, pk=pk).first()
         if not ph:
-            return Response({"error": "Not found"}, status=status.HTTP_404_NOT_FOUND)
+            return not_found()
         with transaction.atomic():
-            for epic in WbsNode.objects.filter(phase=ph, parent__isnull=True):
-                delete_node_tree(epic)
-            ph.delete()
+            delete_phase_tree(ph)
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 # ---------------------------------------------------------------- nodes
 class WbsNodeEndpoint(BaseAPIView):
     @allow_permission(allowed_roles=WRITE, level="WORKSPACE")
-    def post(self, request, slug):
+    def post(self, request, slug, plan):
         data = NodeCreateInput(data=request.data)
         data.is_valid(raise_exception=True)
         v = data.validated_data
         if "title" not in v:
             return Response({"error": "title is required"}, status=status.HTTP_400_BAD_REQUEST)
-        workspace = Workspace.objects.get(slug=slug)
+        plan_obj = get_plan(slug, plan)
+        if not plan_obj:
+            return not_found()
+        workspace = plan_obj.workspace
         if "parent_id" in v:
-            parent = WbsNode.objects.filter(workspace=workspace, pk=v["parent_id"]).first()
+            parent = WbsNode.objects.filter(phase__plan=plan_obj, pk=v["parent_id"]).first()
             if not parent:
                 return Response({"error": "Parent not found"}, status=status.HTTP_404_NOT_FOUND)
             if parent.parent_id:
@@ -279,7 +409,7 @@ class WbsNodeEndpoint(BaseAPIView):
             phase_id = parent.phase_id
         else:
             phase_id = v.get("phase_id")
-            if not phase_id or not WbsPhase.objects.filter(workspace=workspace, pk=phase_id).exists():
+            if not phase_id or not WbsPhase.objects.filter(plan=plan_obj, pk=phase_id).exists():
                 return Response({"error": "A valid phase_id is required"}, status=status.HTTP_400_BAD_REQUEST)
         node = WbsNode.objects.create(
             workspace=workspace, phase_id=phase_id, parent_id=v.get("parent_id"), title=v["title"],
@@ -289,22 +419,22 @@ class WbsNodeEndpoint(BaseAPIView):
         return Response({"id": str(node.id)}, status=status.HTTP_201_CREATED)
 
     @allow_permission(allowed_roles=WRITE, level="WORKSPACE")
-    def patch(self, request, slug, pk):
+    def patch(self, request, slug, plan, pk):
         data = NodeInput(data=request.data)
         data.is_valid(raise_exception=True)
-        node = WbsNode.objects.filter(workspace__slug=slug, pk=pk).first()
+        node = WbsNode.objects.filter(phase__plan_id=plan, workspace__slug=slug, pk=pk).first()
         if not node:
-            return Response({"error": "Not found"}, status=status.HTTP_404_NOT_FOUND)
+            return not_found()
         for k, v in data.validated_data.items():
             setattr(node, k, v)
         node.save()
         return Response({"ok": True})
 
     @allow_permission(allowed_roles=WRITE, level="WORKSPACE")
-    def delete(self, request, slug, pk):
-        node = WbsNode.objects.filter(workspace__slug=slug, pk=pk).first()
+    def delete(self, request, slug, plan, pk):
+        node = WbsNode.objects.filter(phase__plan_id=plan, workspace__slug=slug, pk=pk).first()
         if not node:
-            return Response({"error": "Not found"}, status=status.HTTP_404_NOT_FOUND)
+            return not_found()
         with transaction.atomic():
             delete_node_tree(node)  # Plane work items are untouched
         return Response(status=status.HTTP_204_NO_CONTENT)
@@ -314,23 +444,27 @@ class WbsNodeIssueEndpoint(BaseAPIView):
     """Link or unlink a Plane work item. Only work items the user can see (project member) can be linked."""
 
     @allow_permission(allowed_roles=WRITE, level="WORKSPACE")
-    def post(self, request, slug, pk):
+    def post(self, request, slug, plan, pk):
         data = IssueLinkInput(data=request.data)
         data.is_valid(raise_exception=True)
-        node = WbsNode.objects.filter(workspace__slug=slug, pk=pk).first()
+        plan_obj = get_plan(slug, plan)
+        node = WbsNode.objects.filter(phase__plan=plan_obj, pk=pk).first() if plan_obj else None
         if not node:
-            return Response({"error": "Not found"}, status=status.HTTP_404_NOT_FOUND)
-        issue = visible_issues(request.user, node.workspace_id).filter(pk=data.validated_data["issue_id"]).first()
+            return not_found()
+        # only work items of this plan's projects (and of projects the user belongs to) can be linked
+        issue = plan_issues(request.user, plan_obj).filter(pk=data.validated_data["issue_id"]).first()
         if not issue:
-            return Response({"error": "Work item not found"}, status=status.HTTP_404_NOT_FOUND)
+            return Response({"error": "Work item not found in the projects of this WBS"}, status=status.HTTP_404_NOT_FOUND)
         WbsNodeIssue.objects.get_or_create(workspace_id=node.workspace_id, node=node, issue=issue)
         return Response({"ok": True}, status=status.HTTP_201_CREATED)
 
     @allow_permission(allowed_roles=WRITE, level="WORKSPACE")
-    def delete(self, request, slug, pk, issue_id):
-        link = WbsNodeIssue.objects.filter(workspace__slug=slug, node_id=pk, issue_id=issue_id).first()
+    def delete(self, request, slug, plan, pk, issue_id):
+        link = WbsNodeIssue.objects.filter(
+            node__phase__plan_id=plan, workspace__slug=slug, node_id=pk, issue_id=issue_id
+        ).first()
         if not link:
-            return Response({"error": "Not found"}, status=status.HTTP_404_NOT_FOUND)
+            return not_found()
         link.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
 
@@ -338,32 +472,35 @@ class WbsNodeIssueEndpoint(BaseAPIView):
 # ---------------------------------------------------------------- milestones
 class WbsMilestoneEndpoint(BaseAPIView):
     @allow_permission(allowed_roles=WRITE, level="WORKSPACE")
-    def post(self, request, slug):
+    def post(self, request, slug, plan):
         data = MilestoneInput(data=request.data)
         data.is_valid(raise_exception=True)
         v = data.validated_data
         if "name" not in v or "day" not in v:
             return Response({"error": "name and day are required"}, status=status.HTTP_400_BAD_REQUEST)
-        m = WbsMilestone.objects.create(workspace=Workspace.objects.get(slug=slug), name=v["name"], day=v["day"])
+        plan_obj = get_plan(slug, plan)
+        if not plan_obj:
+            return not_found()
+        m = WbsMilestone.objects.create(workspace=plan_obj.workspace, plan=plan_obj, name=v["name"], day=v["day"])
         return Response({"id": str(m.id)}, status=status.HTTP_201_CREATED)
 
     @allow_permission(allowed_roles=WRITE, level="WORKSPACE")
-    def patch(self, request, slug, pk):
+    def patch(self, request, slug, plan, pk):
         data = MilestoneInput(data=request.data)
         data.is_valid(raise_exception=True)
-        m = WbsMilestone.objects.filter(workspace__slug=slug, pk=pk).first()
+        m = WbsMilestone.objects.filter(plan_id=plan, workspace__slug=slug, pk=pk).first()
         if not m:
-            return Response({"error": "Not found"}, status=status.HTTP_404_NOT_FOUND)
+            return not_found()
         for k, v in data.validated_data.items():
             setattr(m, k, v)
         m.save()
         return Response({"ok": True})
 
     @allow_permission(allowed_roles=WRITE, level="WORKSPACE")
-    def delete(self, request, slug, pk):
-        m = WbsMilestone.objects.filter(workspace__slug=slug, pk=pk).first()
+    def delete(self, request, slug, plan, pk):
+        m = WbsMilestone.objects.filter(plan_id=plan, workspace__slug=slug, pk=pk).first()
         if not m:
-            return Response({"error": "Not found"}, status=status.HTTP_404_NOT_FOUND)
+            return not_found()
         m.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
 
@@ -371,10 +508,12 @@ class WbsMilestoneEndpoint(BaseAPIView):
 # ---------------------------------------------------------------- work item search
 class WbsIssueSearchEndpoint(BaseAPIView):
     @allow_permission(allowed_roles=WRITE, level="WORKSPACE")
-    def get(self, request, slug):
-        workspace = Workspace.objects.get(slug=slug)
+    def get(self, request, slug, plan):
+        plan_obj = get_plan(slug, plan)
+        if not plan_obj:
+            return not_found()
         q = (request.query_params.get("q") or "").strip()
-        qs = visible_issues(request.user, workspace.id).select_related("project", "state")
+        qs = plan_issues(request.user, plan_obj).select_related("project", "state")
         if q:
             cond = Q(name__icontains=q)
             if "-" in q:

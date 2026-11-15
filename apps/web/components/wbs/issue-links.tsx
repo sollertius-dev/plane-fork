@@ -7,11 +7,13 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { wbsApi } from "./api";
+import type { TScope } from "./api";
 import type { TWbsIssue } from "./types";
 
 type Hit = { id: string; ref: string; name: string; status: string | null };
 
 type Props = {
+  scope: TScope;
   slug: string;
   issues: TWbsIssue[];
   canWrite: boolean;
@@ -20,7 +22,7 @@ type Props = {
 };
 
 // Work items linked to one WBS row: a counter on the row, and a popover to see, add and remove them.
-export function IssueLinks({ slug, issues, canWrite, onAdd, onRemove }: Props) {
+export function IssueLinks({ scope, slug, issues, canWrite, onAdd, onRemove }: Props) {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState("");
   const [hits, setHits] = useState<Hit[]>([]);
@@ -40,12 +42,12 @@ export function IssueLinks({ slug, issues, canWrite, onAdd, onRemove }: Props) {
     if (!open || !canWrite) return;
     const timer = setTimeout(() => {
       wbsApi
-        .searchIssues(slug, q)
+        .searchIssues(scope, q)
         .then(setHits)
         .catch(() => setHits([]));
     }, 200);
     return () => clearTimeout(timer);
-  }, [open, q, slug, canWrite]);
+  }, [open, q, scope, canWrite]);
 
   useEffect(() => {
     if (!open) return;

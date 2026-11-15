@@ -71,3 +71,14 @@ export type TWbsRow = {
   childCount: number;
   node?: TWbsNode;
 };
+
+export type TWbsProject = { id: string; identifier: string; name: string };
+
+export type TWbsPlan = {
+  id: string;
+  name: string;
+  projects: TWbsProject[]; // the projects of the plan that the current user is a member of
+  hidden_projects: number; // projects of the plan the user is not a member of
+};
+
+export type TWbsPlanList = { can_write: boolean; plans: TWbsPlan[] };
