@@ -53,7 +53,9 @@ def plan(session_client, workspace, project):
 
 
 def make_issue(project, workspace, name, group):
-    state = State.objects.create(name=group.title(), group=group, project=project, workspace=workspace)
+    state, _ = State.objects.get_or_create(
+        name=group.title(), project=project, workspace=workspace, defaults={"group": group}
+    )
     return Issue.objects.create(name=name, project=project, workspace=workspace, state=state)
 
 
@@ -283,3 +285,55 @@ class TestWbs:
         assert n["assignees"] == [person]
         assert n["issues"][0]["assignees"] == [person]
         assert set(n["issues"][0]) >= {"ref", "name", "status", "status_group", "start", "end", "project_id"}
+
+    # ---- actual effort (hours of the work items)
+    def test_actual_effort_adds_up_from_work_items(self, session_client, workspace, plan, project):
+        phase = add_phase(session_client, workspace, plan)
+        epic = session_client.post(pu(workspace, plan, "nodes/"), {"phase_id": phase, "title": "E"}, format="json").json()["id"]
+        tps = [
+            session_client.post(pu(workspace, plan, "nodes/"), {"parent_id": epic, "title": t, "man_day": 3, "effort": 1}, format="json").json()["id"]
+            for t in ("A", "B")
+        ]
+        for tp, hours in ((tps[0], (8, 4)), (tps[1], (2,))):
+            for h in hours:
+                issue = make_issue(project, workspace, f"w{tp[:4]}{h}", "started")
+                Issue.objects.filter(pk=issue.pk).update(effort_hours=h)
+                session_client.post(pu(workspace, plan, f"nodes/{tp}/issues/"), {"issue_id": str(issue.id)}, format="json")
+        t = tree(session_client, workspace, plan)["phases"][0]
+        e = t["epics"][0]
+        assert [x["actual_hours"] for x in e["touchpoints"]] == [12, 2]
+        assert [x["actual_days"] for x in e["touchpoints"]] == [1.5, 0.25]  # 8 hours a day by default
+        assert (e["actual_hours"], e["actual_days"]) == (14, 1.75) and (t["actual_hours"], t["actual_days"]) == (14, 1.75)
+        # a work item without hours counts as zero, and the work item itself reports its hours
+        blank = make_issue(project, workspace, "no hours", "started")
+        session_client.post(pu(workspace, plan, f"nodes/{tps[1]}/issues/"), {"issue_id": str(blank.id)}, format="json")
+        tp_b = tree(session_client, workspace, plan)["phases"][0]["epics"][0]["touchpoints"][1]
+        assert tp_b["actual_hours"] == 2 and sorted(i["effort_hours"] or 0 for i in tp_b["issues"]) == [0, 2]
+        assert any(i["effort_hours"] is None for i in tp_b["issues"])
+
+    def test_hours_per_day(self, session_client, workspace, plan, project):
+        assert session_client.get(url(workspace, "plans/")).json()["plans"][0]["hours_per_day"] == 8
+        phase = add_phase(session_client, workspace, plan)
+        node = session_client.post(pu(workspace, plan, "nodes/"), {"phase_id": phase, "title": "E"}, format="json").json()["id"]
+        issue = make_issue(project, workspace, "w", "started")
+        Issue.objects.filter(pk=issue.pk).update(effort_hours=6)
+        session_client.post(pu(workspace, plan, f"nodes/{node}/issues/"), {"issue_id": str(issue.id)}, format="json")
+        assert session_client.patch(pu(workspace, plan, ""), {"hours_per_day": 6}, format="json").json()["hours_per_day"] == 6
+        n = tree(session_client, workspace, plan)["phases"][0]["epics"][0]
+        assert (n["actual_hours"], n["actual_days"]) == (6, 1.0)  # a 6 hour day
+        assert tree(session_client, workspace, plan)["calendar"]["hours_per_day"] == 6
+        for bad in (0, 0.25, 25, "x"):
+            assert session_client.patch(pu(workspace, plan, ""), {"hours_per_day": bad}, format="json").status_code == 400
+
+    def test_effort_hours_can_be_set_through_the_work_item_api(self, session_client, workspace, project):
+        issue = make_issue(project, workspace, "api", "started")
+        path = f"/api/workspaces/{workspace.slug}/projects/{project.id}/issues/{issue.id}/"
+        r = session_client.patch(path, {"effort_hours": 8.5}, format="json")
+        assert r.status_code in (200, 204), r.content
+        issue.refresh_from_db()
+        assert float(issue.effort_hours) == 8.5
+        detail = session_client.get(path).json()
+        assert detail["effort_hours"] == 8.5  # a number, not a string
+        assert session_client.patch(path, {"effort_hours": None}, format="json").status_code in (200, 204)
+        assert session_client.get(path).json()["effort_hours"] is None
+        assert session_client.patch(path, {"effort_hours": -1}, format="json").status_code == 400

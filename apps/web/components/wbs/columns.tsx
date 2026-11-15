@@ -7,11 +7,11 @@
 import { useCallback, useState } from "react";
 import type { PointerEvent as ReactPointerEvent } from "react";
 
-export type TColKey = "name" | "manDay" | "effort" | "lead" | "start" | "who" | "status";
+export type TColKey = "name" | "manDay" | "effort" | "lead" | "actual" | "start" | "who" | "status";
 export type TCols = Record<TColKey, number>;
 
-export const DEFAULT_COLS: TCols = { name: 340, manDay: 66, effort: 58, lead: 52, start: 100, who: 92, status: 104 };
-export const MIN_COLS: TCols = { name: 160, manDay: 48, effort: 48, lead: 44, start: 84, who: 48, status: 70 };
+export const DEFAULT_COLS: TCols = { name: 340, manDay: 66, effort: 58, lead: 52, actual: 62, start: 100, who: 92, status: 104 };
+export const MIN_COLS: TCols = { name: 160, manDay: 48, effort: 48, lead: 44, actual: 52, start: 84, who: 48, status: 70 };
 const KEY = "wbs_columns";
 
 const read = (): TCols => {

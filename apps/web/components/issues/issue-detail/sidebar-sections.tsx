@@ -23,6 +23,7 @@ import { calculateTimeAgo, cn, renderFormattedDate } from "@plane/utils";
 import { SidebarPropertyListItem } from "@/components/common/layout/sidebar/property-list-item";
 import { EstimateSelect } from "@/components/dropdowns/estimate/estimate-select";
 import { IssueParentSelectRoot } from "@/components/issues/parent-select-root";
+import { ClockIcon, IssueEffortHoursField } from "@/components/wbs/issue-effort-field";
 // hooks
 import { useProjectEstimates } from "@/hooks/store/estimates";
 import { useIssueDetail } from "@/hooks/store/use-issue-detail";
@@ -142,6 +143,15 @@ export const IssueDetailSidebarSections = observer(function IssueDetailSidebarSe
               />
             </SidebarPropertyListItem>
           )}
+
+          {/* Sollertius: actual effort in hours, summed up by the WBS schedule */}
+          <SidebarPropertyListItem icon={ClockIcon} label="Effort (hours)">
+            <IssueEffortHoursField
+              value={issue.effort_hours ?? null}
+              disabled={disabled}
+              onChange={(hours) => issueOperations.update(workspaceSlug, projectId, issueId, { effort_hours: hours })}
+            />
+          </SidebarPropertyListItem>
         </IssueDetailSidebarGroup>
 
         {hasProjectStructureProperties && (

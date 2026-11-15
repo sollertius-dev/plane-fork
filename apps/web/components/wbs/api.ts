@@ -44,9 +44,9 @@ export type TNodePatch = Partial<{
 export const wbsPlanApi = {
   list: (slug: string) => call<TWbsPlanList>("GET", `${ws(slug)}/plans/`),
   projects: (slug: string) => call<TWbsProject[]>("GET", `${ws(slug)}/projects/`),
-  create: (slug: string, data: { name: string; project_ids: string[]; working_days: number[]; holidays: string[] }) =>
+  create: (slug: string, data: { name: string; project_ids: string[]; working_days: number[]; holidays: string[]; hours_per_day: number }) =>
     call<TWbsPlan>("POST", `${ws(slug)}/plans/`, data),
-  update: (slug: string, id: string, data: { name?: string; project_ids?: string[]; working_days?: number[]; holidays?: string[] }) =>
+  update: (slug: string, id: string, data: { name?: string; project_ids?: string[]; working_days?: number[]; holidays?: string[]; hours_per_day?: number }) =>
     call<TWbsPlan>("PATCH", `${ws(slug)}/plans/${id}/`, data),
   remove: (slug: string, id: string) => call("DELETE", `${ws(slug)}/plans/${id}/`),
 };
@@ -64,6 +64,9 @@ export const wbsApi = {
   addMilestone: (s: TScope, data: Pick<TWbsMilestone, "name" | "day">) =>
     call<{ id: string }>("POST", `${base(s)}/milestones/`, data),
   deleteMilestone: (s: TScope, id: string) => call("DELETE", `${base(s)}/milestones/${id}/`),
+  // the effort is a property of the work item itself, so it is saved through Plane's own work item API
+  setEffort: (s: TScope, projectId: string, issueId: string, hours: number | null) =>
+    call("PATCH", `/api/workspaces/${encodeURIComponent(s.slug)}/projects/${projectId}/issues/${issueId}/`, { effort_hours: hours }),
   linkIssue: (s: TScope, nodeId: string, issueId: string) =>
     call("POST", `${base(s)}/nodes/${nodeId}/issues/`, { issue_id: issueId }),
   unlinkIssue: (s: TScope, nodeId: string, issueId: string) =>
