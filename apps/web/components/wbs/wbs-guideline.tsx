@@ -54,18 +54,28 @@ export function WbsGuideline() {
           <tbody>
             <Row a="Man-day" b="The work to do, in days of one person. You enter it on the lowest row." />
             <Row a="Effort" b="The share of a person's time given to the row, from 1% to 100%. 50% means half of the working time." />
-            <Row a="Lead" b="How long the row takes on the calendar: Man-day ÷ Effort, rounded up. 6 man-days at 50% is 12 days. You cannot type it. Change Man-day or Effort instead." />
-            <Row a="Start" b="The first day of the row. You enter it. The end date is Start + Lead." />
+            <Row a="Lead" b="How long the row takes, in working days: Man-day ÷ Effort, rounded up. 6 man-days at 50% is 12 working days. You cannot type it. Change Man-day or Effort instead." />
+            <Row a="Start" b="The first day of the row. You enter it. The end is the last working day of the Lead. If you enter a day off, the row starts on the next working day and the date is marked with *." />
             <Row a="Assignee, Status" b="Taken from the linked work items (see below). You do not type them." />
             <Row a="Bars" b="One bar per row, coloured by phase. A darker, thicker bar is a touch point, a lighter one an epic, a thin one the whole phase. A tick on a touch point means all its work items are done." />
             <Row a="Red line, Now" b="Today." />
             <Row a="Dashed lines" b="Milestones. The flag at the top shows the name. Hover for the date." />
+            <Row a="Grey columns" b="Days off of this WBS: the weekdays that are not worked and the holidays." />
           </tbody>
         </table>
+        <H>Working days</H>
         <P>
-          Time is counted in <B>calendar days</B>, weekends included. Plan with that in mind: 5 working days is 7
-          calendar days.
+          Every WBS has its own <B>working calendar</B>: which weekdays are worked, and which dates are days off. New
+          WBS start with Monday to Friday. Open <B>Edit</B> at the top right to change it: press the weekday buttons
+          (Mon to Sun, in any combination, so a Saturday or Sunday can be a working day) and add holidays as dates.
         </P>
+        <ul className="mb-2 ml-5 list-disc">
+          <Li>Lead time counts <B>working days only</B>. 5 man-days at 100% starting on Monday ends on Friday of the same week. 10 man-days starting on Thursday ends on Wednesday of the week after next, because the weekend is skipped.</Li>
+          <Li>The grey columns on the timeline are the days off. Bars run across them, and no work is counted there.</Li>
+          <Li>If you enter a Start that is a day off, the row starts on the next working day. The Start column shows that day, with a *, and keeps your date for editing.</Li>
+          <Li>A phase or an epic that is a sum shows the working days between its earliest start and its latest end.</Li>
+          <Li>Changing the calendar moves the end dates of existing rows. Start dates and estimates stay as they are.</Li>
+        </ul>
 
         <H>How the numbers add up</H>
         <ul className="mb-2 ml-5 list-disc">
@@ -125,6 +135,8 @@ export function WbsGuideline() {
         <table className="mb-8 w-full">
           <tbody>
             <Row a="Why can't I edit the Lead?" b="Lead is calculated. Change Man-day or Effort, or move the Start." />
+            <Row a="Why did my Start date change?" b="You entered a day off of this WBS (for example a Saturday). The row starts on the next working day. Change the working days with Edit if you do work on that day." />
+            <Row a="Our team works on Saturdays." b="Press Edit at the top right and switch Sat on in Working days. Add public holidays under Days off." />
             <Row a="Why are the numbers of an epic grey?" b="It has touch points, so it shows their sum. Edit the touch points." />
             <Row a="I added a touch point and the epic's Man-day became 0." b="The epic now shows the sum of its touch points. The Man-day you typed before on the epic is no longer used. Enter the estimate on the touch point." />
             <Row a="The status says Not started but the work began." b="Status follows the work items. Check that they are linked to this row and that their state in Plane is started." />

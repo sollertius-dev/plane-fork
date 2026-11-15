@@ -173,8 +173,18 @@ export function WbsSchedule({ slug, plan }: { slug: string; plan: string }) {
     );
   }
 
+  // Week lines, plus a light shade on days off (weekdays that are not worked, and holidays).
+  // The timeline starts on a Monday, so the weekday of a column is its index inside the week.
+  const off = "rgba(128,128,128,.09)";
+  const workingSet = new Set(tree.calendar.working_days);
+  const weekShade = `repeating-linear-gradient(to right, ${Array.from({ length: 7 }, (_, i) => `${workingSet.has(i) ? "transparent" : off} ${i * DAY_PX}px ${(i + 1) * DAY_PX}px`).join(", ")})`;
+  const weekLines = `repeating-linear-gradient(to right, transparent 0, transparent ${WEEK_PX - 1}px, rgba(128,128,128,.16) ${WEEK_PX - 1}px, rgba(128,128,128,.16) ${WEEK_PX}px)`;
+  const holidayXs = tree.calendar.holidays.map((h) => xOf(tl, toDay(h))).filter((x) => x >= 0 && x < tl.width);
   const gridBg: CSSProperties = {
-    backgroundImage: `repeating-linear-gradient(to right, transparent 0, transparent ${WEEK_PX - 1}px, rgba(128,128,128,.16) ${WEEK_PX - 1}px, rgba(128,128,128,.16) ${WEEK_PX}px)`,
+    backgroundImage: [weekShade, weekLines, ...holidayXs.map(() => `linear-gradient(${off}, ${off})`)].join(", "),
+    backgroundSize: ["auto", "auto", ...holidayXs.map(() => `${DAY_PX}px 100%`)].join(", "),
+    backgroundPosition: ["0 0", "0 0", ...holidayXs.map((x) => `${x}px 0`)].join(", "),
+    backgroundRepeat: ["repeat", "repeat", ...holidayXs.map(() => "no-repeat")].join(", "),
   };
   const weekStarts = Array.from({ length: tl.weeks }, (_, i) => tl.origin + i * 7);
   const months: { key: string; label: string; from: number; count: number }[] = [];
@@ -319,9 +329,9 @@ export function WbsSchedule({ slug, plan }: { slug: string; plan: string }) {
                           <EditableCell align="right" type="number" min={1} max={100} step={5} readOnly={!canEditNumbers} value={String(Math.round(row.effort * 100))}
                             display={<span className="text-secondary">{Math.round(row.effort * 100)}%</span>}
                             onCommit={(v) => Number(v) > 0 && Number(v) <= 100 && patch({ effort: Number(v) / 100 })} />)}
-                        {cell(COL.lead, <span className="w-full pr-1.5 text-right text-[13px] text-secondary">{row.lead_days ? `${row.lead_days}d` : "—"}</span>)}
-                        {cell(COL.start, <EditableCell type="date" readOnly={!canEditNumbers} value={row.start ?? ""}
-                          display={<span className={row.start ? "text-secondary" : "text-tertiary"}>{fmtDate(row.start)}</span>}
+                        {cell(COL.lead, <span className="w-full pr-1.5 text-right text-[13px] text-secondary" title={row.lead_days ? `${row.lead_days} working days` : undefined}>{row.lead_days ? `${row.lead_days}d` : "—"}</span>)}
+                        {cell(COL.start, <EditableCell type="date" readOnly={!canEditNumbers} value={node?.start_input ?? row.start ?? ""}
+                          display={<span className={row.start ? "text-secondary" : "text-tertiary"} title={node?.start_input && node.start_input !== row.start ? `Entered ${fmtDate(node.start_input)}, a day off: work starts on the next working day` : undefined}>{fmtDate(row.start)}{node?.start_input && node.start_input !== row.start ? " *" : ""}</span>}
                           onCommit={(v) => patch({ start_date: v || null })} />, "pl-2")}
                         {cell(COL.who, <span className="truncate px-1.5 text-[12px] text-secondary" title={node?.assignees ?? ""}>{node?.assignees ?? "—"}</span>)}
                         {cell(COL.status, <span className="px-1.5"><StatusChip node={node} row={row} /></span>)}
@@ -331,7 +341,7 @@ export function WbsSchedule({ slug, plan }: { slug: string; plan: string }) {
                   {/* gantt cell */}
                   <div className="relative flex-shrink-0 border-b border-subtle" style={{ width: tl.width, ...gridBg }}>
                     {bar ? (
-                      <div className="absolute top-1/2 flex -translate-y-1/2 items-center overflow-hidden rounded-[3px]" title={`${row.title}: ${fmtDate(row.start)} → ${fmtDate(row.end)} · ${row.lead_days} d · ${num(row.man_day)} man-day`}
+                      <div className="absolute top-1/2 flex -translate-y-1/2 items-center overflow-hidden rounded-[3px]" title={`${row.title}: ${fmtDate(row.start)} → ${fmtDate(row.end)} · ${row.lead_days} working days · ${num(row.man_day)} man-day`}
                         style={{ left: bar.x, width: bar.w, height: barH, background: row.color, opacity: row.kind === "phase" ? 0.95 : row.kind === "epic" ? 0.55 : done ? 1 : 0.78 }}>
                         {row.kind === "touchpoint" && bar.w > 46 ? <span className="px-1.5 text-[10px] font-semibold whitespace-nowrap text-white">{num(row.man_day)}d{done ? " ✓" : ""}</span> : null}
                       </div>

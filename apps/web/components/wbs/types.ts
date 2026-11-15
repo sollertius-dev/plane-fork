@@ -22,7 +22,8 @@ export type TWbsNode = {
   man_day: number;
   effort: number; // fraction of a person's time, 0 < effort <= 1
   lead_days: number; // calendar days = ceil(man_day / effort)
-  start: string | null; // ISO date
+  start: string | null; // first working day of the row (the entered date, or the next working day)
+  start_input: string | null; // the date that was entered
   end: string | null;
   issues: TWbsIssue[]; // linked Plane work items (many per node)
   issues_done: number;
@@ -50,6 +51,7 @@ export type TWbsMilestone = { id: string; name: string; day: string };
 export type TWbsTree = {
   today: string;
   can_write: boolean;
+  calendar: { working_days: number[]; holidays: string[] };
   phases: TWbsPhase[];
   milestones: TWbsMilestone[];
 };
@@ -79,6 +81,8 @@ export type TWbsPlan = {
   name: string;
   projects: TWbsProject[]; // the projects of the plan that the current user is a member of
   hidden_projects: number; // projects of the plan the user is not a member of
+  working_days: number[]; // Monday is 0
+  holidays: string[]; // ISO dates that are not worked
 };
 
 export type TWbsPlanList = { can_write: boolean; plans: TWbsPlan[] };

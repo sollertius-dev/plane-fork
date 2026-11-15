@@ -44,9 +44,9 @@ export type TNodePatch = Partial<{
 export const wbsPlanApi = {
   list: (slug: string) => call<TWbsPlanList>("GET", `${ws(slug)}/plans/`),
   projects: (slug: string) => call<TWbsProject[]>("GET", `${ws(slug)}/projects/`),
-  create: (slug: string, data: { name: string; project_ids: string[] }) =>
+  create: (slug: string, data: { name: string; project_ids: string[]; working_days: number[]; holidays: string[] }) =>
     call<TWbsPlan>("POST", `${ws(slug)}/plans/`, data),
-  update: (slug: string, id: string, data: { name?: string; project_ids?: string[] }) =>
+  update: (slug: string, id: string, data: { name?: string; project_ids?: string[]; working_days?: number[]; holidays?: string[] }) =>
     call<TWbsPlan>("PATCH", `${ws(slug)}/plans/${id}/`, data),
   remove: (slug: string, id: string) => call("DELETE", `${ws(slug)}/plans/${id}/`),
 };

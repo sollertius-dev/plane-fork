@@ -7,6 +7,8 @@
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { wbsPlanApi } from "./api";
+import { DAY_NAMES, DEFAULT_WORKING_DAYS } from "./calendar";
+import { fmtDate } from "./timeline";
 import type { TWbsPlan, TWbsProject } from "./types";
 
 type Props = {
@@ -22,6 +24,9 @@ export function PlanDialog({ slug, plan, onSaved, onDeleted, onClose }: Props) {
   const [name, setName] = useState(plan?.name ?? "");
   const [projects, setProjects] = useState<TWbsProject[] | null>(null);
   const [picked, setPicked] = useState<Set<string>>(new Set(plan?.projects.map((p) => p.id) ?? []));
+  const [workDays, setWorkDays] = useState<Set<number>>(new Set(plan?.working_days ?? DEFAULT_WORKING_DAYS));
+  const [holidays, setHolidays] = useState<string[]>(plan?.holidays ?? []);
+  const [newHoliday, setNewHoliday] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -40,11 +45,24 @@ export function PlanDialog({ slug, plan, onSaved, onDeleted, onClose }: Props) {
       return next;
     });
 
+  const toggleDay = (d: number) =>
+    setWorkDays((prev) => {
+      const next = new Set(prev);
+      if (next.has(d)) next.delete(d);
+      else next.add(d);
+      return next;
+    });
+  const addHoliday = () => {
+    if (newHoliday && !holidays.includes(newHoliday)) setHolidays([...holidays, newHoliday].sort());
+    setNewHoliday("");
+  };
+
   const save = async () => {
     if (!name.trim()) return setError("Give the WBS a name.");
+    if (workDays.size === 0) return setError("Choose at least one working day.");
     setBusy(true);
     try {
-      const body = { name: name.trim(), project_ids: [...picked] };
+      const body = { name: name.trim(), project_ids: [...picked], working_days: [...workDays].sort(), holidays };
       onSaved(plan ? await wbsPlanApi.update(slug, plan.id, body) : await wbsPlanApi.create(slug, body));
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -105,6 +123,50 @@ export function PlanDialog({ slug, plan, onSaved, onDeleted, onClose }: Props) {
             <p className="mt-2 text-[12px] text-tertiary">
               {plan.hidden_projects} more project(s) of this WBS are not shown because you are not a member of them. They stay as they are.
             </p>
+          ) : null}
+          <p className="mt-5 mb-1 text-[12px] font-medium text-secondary">Working days</p>
+          <p className="mb-2 text-[12px] text-tertiary">
+            Lead time is counted in these days. A row that starts on a day off starts on the next working day.
+          </p>
+          <div className="flex gap-1.5">
+            {DAY_NAMES.map((n, d) => (
+              <button
+                key={n}
+                type="button"
+                aria-pressed={workDays.has(d)}
+                onClick={() => toggleDay(d)}
+                className={
+                  workDays.has(d)
+                    ? "h-8 flex-1 rounded-md bg-accent-primary text-[12px] font-medium text-on-color"
+                    : "h-8 flex-1 rounded-md border border-subtle text-[12px] text-tertiary hover:bg-layer-1-hover"
+                }
+              >
+                {n}
+              </button>
+            ))}
+          </div>
+          <p className="mt-4 mb-1 text-[12px] font-medium text-secondary">Days off (holidays)</p>
+          <div className="flex items-center gap-2">
+            <input
+              type="date"
+              value={newHoliday}
+              onChange={(e) => setNewHoliday(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && addHoliday()}
+              className="h-8 rounded-sm border border-subtle bg-surface-1 px-2 text-[13px] text-primary outline-none focus:border-accent-strong"
+            />
+            <button type="button" onClick={addHoliday} className="h-8 rounded-md border border-subtle px-3 text-[12px] text-secondary hover:bg-layer-1-hover">
+              Add
+            </button>
+          </div>
+          {holidays.length ? (
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {holidays.map((h) => (
+                <span key={h} className="flex items-center gap-1 rounded-full bg-layer-2 px-2.5 py-0.5 text-[12px] text-secondary">
+                  {fmtDate(h)}
+                  <button type="button" aria-label={`Remove ${h}`} onClick={() => setHolidays(holidays.filter((x) => x !== h))} className="text-tertiary hover:text-danger-primary">✕</button>
+                </span>
+              ))}
+            </div>
           ) : null}
           {error ? <p className="mt-3 text-[13px] text-danger-primary">{error}</p> : null}
         </div>
