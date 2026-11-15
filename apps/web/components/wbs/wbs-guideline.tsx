@@ -56,7 +56,7 @@ export function WbsGuideline() {
             <Row a="Effort" b="The share of a person's time given to the row, from 1% to 100%. 50% means half of the working time." />
             <Row a="Lead" b="How long the row takes, in working days: Man-day ÷ Effort, rounded up. 6 man-days at 50% is 12 working days. You cannot type it. Change Man-day or Effort instead." />
             <Row a="Start" b="The first day of the row. You enter it. The end is the last working day of the Lead. If you enter a day off, the row starts on the next working day and the date is marked with *." />
-            <Row a="Assignee, Status" b="Taken from the linked work items (see below). You do not type them." />
+            <Row a="Assignee, Status" b="Taken from the linked work items (see below). You do not type them. Assignees are shown as round avatars (up to three, then +N). Hover for the names." />
             <Row a="Bars" b="One bar per row, coloured by phase. A darker, thicker bar is a touch point, a lighter one an epic, a thin one the whole phase. A tick on a touch point means all its work items are done." />
             <Row a="Red line, Now" b="Today." />
             <Row a="Dashed lines" b="Milestones. The flag at the top shows the name. Hover for the date." />
@@ -94,6 +94,13 @@ export function WbsGuideline() {
           <Li><B>Add a milestone:</B> press <B>+ Milestone</B>, type a name, pick the date, press Add. To remove one, click its flag at the top. A milestone cannot be edited yet: remove it and add it again.</Li>
           <Li><B>Collapse or expand:</B> the arrow in front of a row, or <B>Collapse all</B> and <B>Expand all</B>.</Li>
           <Li><B>Hide details:</B> keeps only the names, which leaves more room for the timeline.</Li>
+        </ul>
+
+        <H>Resizing the table</H>
+        <ul className="mb-2 ml-5 list-disc">
+          <Li>Drag the right edge of any column header to make that column wider or narrower. Widen the first column to read long names in full. Double-click an edge to put the column back to its default width.</Li>
+          <Li>The widths are remembered in your browser. Hover over a cut name to see it in full.</Li>
+          <Li>Dates are shown as DD/MM/YY.</Li>
         </ul>
 
         <H>Moving along the timeline</H>

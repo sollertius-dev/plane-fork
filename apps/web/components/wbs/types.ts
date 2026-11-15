@@ -16,6 +16,8 @@ export type TWbsIssue = {
   status_group: TStatusGroup;
 };
 
+export type TWbsPerson = { id: string; name: string; avatar: string | null };
+
 export type TWbsNode = {
   id: string;
   title: string;
@@ -29,7 +31,7 @@ export type TWbsNode = {
   issues_done: number;
   status: string | null; // derived from the linked work items
   status_group: TStatusGroup;
-  assignees: string | null;
+  assignees: TWbsPerson[]; // everyone assigned to the linked work items
   rolled?: boolean; // true when the values are the roll-up of the children
   children_done?: number;
   touchpoints?: TWbsNode[];

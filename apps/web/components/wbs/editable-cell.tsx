@@ -16,6 +16,7 @@ type Props = {
   autoEdit?: boolean; // open straight away (used for a row that was just added)
   align?: "left" | "right";
   className?: string;
+  title?: string; // shown on hover, for text that is cut
   min?: number;
   max?: number;
   step?: number;
@@ -30,6 +31,7 @@ export function EditableCell({
   autoEdit,
   align = "left",
   className,
+  title,
   min,
   max,
   step,
@@ -84,6 +86,7 @@ export function EditableCell({
       type="button"
       onClick={open}
       disabled={readOnly}
+      title={title}
       className={cn(
         "h-7 w-full min-w-0 truncate rounded-sm px-1.5 text-[13px]",
         align === "right" ? "text-right" : "text-left",

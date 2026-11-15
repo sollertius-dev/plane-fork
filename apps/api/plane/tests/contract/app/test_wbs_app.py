@@ -11,6 +11,7 @@ from rest_framework import status
 
 from plane.db.models import (
     Issue,
+    IssueAssignee,
     Project,
     ProjectMember,
     State,
@@ -270,3 +271,12 @@ class TestWbs:
         # duplicates collapse and order does not matter
         r = session_client.patch(pu(workspace, plan, ""), {"working_days": [4, 1, 1, 0]}, format="json")
         assert r.json()["working_days"] == [0, 1, 4]
+
+    def test_assignees_come_as_people(self, session_client, workspace, plan, project, create_user):
+        phase = add_phase(session_client, workspace, plan)
+        node = session_client.post(pu(workspace, plan, "nodes/"), {"phase_id": phase, "title": "E"}, format="json").json()["id"]
+        issue = make_issue(project, workspace, "assigned", "started")
+        IssueAssignee.objects.create(issue=issue, assignee=create_user, project=project, workspace=workspace)
+        session_client.post(pu(workspace, plan, f"nodes/{node}/issues/"), {"issue_id": str(issue.id)}, format="json")
+        n = tree(session_client, workspace, plan)["phases"][0]["epics"][0]
+        assert n["assignees"] == [{"id": str(create_user.id), "name": create_user.display_name, "avatar": None}]

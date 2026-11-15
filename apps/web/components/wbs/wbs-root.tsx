@@ -9,15 +9,15 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "@plane/utils";
 import { wbsApi } from "./api";
 import { EditableCell } from "./editable-cell";
+import { AssigneeAvatars } from "./assignee-avatars";
+import { ColResizer, useColumns } from "./columns";
+import type { TColKey } from "./columns";
 import { HScrollBar } from "./h-scroll-bar";
 import { IssueLinks } from "./issue-links";
 import { buildTimeline, dayOfMonth, DAY_PX, fmtDate, mondayOnOrBefore, monthKey, monthLabel, toDay, WEEK_PX, xOf } from "./timeline";
 import type { TStatusGroup, TWbsNode, TWbsPhase, TWbsRow } from "./types";
 import { useWbs } from "./use-wbs";
 
-// Column widths of the table part (px). The Gantt part scrolls next to it.
-const COL = { name: 340, manDay: 66, effort: 58, lead: 58, start: 106, who: 120, status: 104 };
-const DETAIL_W = COL.manDay + COL.effort + COL.lead + COL.start + COL.who + COL.status;
 const ROW_H = { phase: 38, epic: 34, touchpoint: 34 } as const;
 const HEAD_H = 72; // months + weeks + milestone flags
 
@@ -99,7 +99,9 @@ export function WbsSchedule({ slug, plan }: { slug: string; plan: string }) {
     tree?.milestones.forEach((m) => days.push(toDay(m.day)));
     return buildTimeline(days, today);
   }, [tree, today]);
-  const leftW = compact ? COL.name : COL.name + DETAIL_W;
+  const { cols, setWidth, commit, reset } = useColumns();
+  const detailW = cols.manDay + cols.effort + cols.lead + cols.start + cols.who + cols.status;
+  const leftW = compact ? cols.name : cols.name + detailW;
   const canWrite = !!tree?.can_write;
 
   const scrollByWeeks = (w: number) => scroller.current?.scrollBy({ left: w * WEEK_PX, behavior: "smooth" });
@@ -237,17 +239,24 @@ export function WbsSchedule({ slug, plan }: { slug: string; plan: string }) {
           {/* header */}
           <div className="sticky top-0 z-20 flex border-b border-subtle bg-layer-1" style={{ height: HEAD_H }}>
             <div className="sticky left-0 z-30 flex flex-shrink-0 items-end border-r border-subtle bg-layer-1 text-[11px] font-semibold tracking-wide text-tertiary uppercase" style={{ width: leftW }}>
-              <div className="px-3 pb-2" style={{ width: COL.name }}>Phase / Epic / Touch point</div>
-              {compact ? null : (
-                <>
-                  <div className="pb-2 text-right" style={{ width: COL.manDay }}>Man-day</div>
-                  <div className="pb-2 text-right" style={{ width: COL.effort }}>Effort</div>
-                  <div className="pb-2 text-right" style={{ width: COL.lead }}>Lead</div>
-                  <div className="pb-2 pl-3" style={{ width: COL.start }}>Start</div>
-                  <div className="pb-2" style={{ width: COL.who }}>Assignee</div>
-                  <div className="pb-2" style={{ width: COL.status }}>Status</div>
-                </>
-              )}
+              {(
+                [
+                  ["name", "Phase / Epic / Touch point", "px-3 text-left"],
+                  ["manDay", "Man-day", "pr-2 text-right"],
+                  ["effort", "Effort", "pr-2 text-right"],
+                  ["lead", "Lead", "pr-2 text-right"],
+                  ["start", "Start", "pl-2 text-left"],
+                  ["who", "Assignee", "pl-2 text-left"],
+                  ["status", "Status", "pl-2 text-left"],
+                ] as [TColKey, string, string][]
+              )
+                .filter(([k]) => !(compact && k !== "name"))
+                .map(([k, label, cls]) => (
+                  <div key={k} className={cn("relative h-full flex-shrink-0 border-r border-subtle pb-2 whitespace-nowrap", "flex items-end", cls, cls.includes("right") && "justify-end")} style={{ width: cols[k] }}>
+                    <span className="truncate">{label}</span>
+                    <ColResizer width={cols[k]} onChange={(w) => setWidth(k, w)} onDone={commit} onReset={() => reset(k)} />
+                  </div>
+                ))}
             </div>
             <div className="relative flex-shrink-0" style={{ width: tl.width }}>
               {months.map((m) => (
@@ -285,14 +294,14 @@ export function WbsSchedule({ slug, plan }: { slug: string; plan: string }) {
               const done = node?.status_group === "completed";
               const barH = row.kind === "phase" ? 10 : row.kind === "epic" ? 14 : 18;
               const cell = (w: number, child: ReactNode, extra?: string) => (
-                <div className={cn("flex h-full flex-shrink-0 items-center overflow-hidden px-0.5", extra)} style={{ width: w }}>{child}</div>
+                <div className={cn("flex h-full flex-shrink-0 items-center overflow-hidden border-r border-subtle px-0.5", extra)} style={{ width: w }}>{child}</div>
               );
               const patch = (data: Parameters<typeof wbsApi.patchNode>[2]) => run(() => wbsApi.patchNode(scope, row.id, data));
               return (
                 <div key={row.id} className="group flex" style={{ height: ROW_H[row.kind] }}>
                   <div className={cn("sticky left-0 z-10 flex flex-shrink-0 items-center border-r border-b border-subtle group-hover:bg-layer-1", row.kind === "phase" ? "bg-layer-1" : "bg-surface-1")} style={{ width: leftW }}>
                     {/* name */}
-                    <div className="relative flex h-full flex-shrink-0 items-center gap-1 overflow-hidden" style={{ width: COL.name, paddingLeft: 8 + row.depth * 18, paddingRight: canWrite ? 58 : 4 }}>
+                    <div className="relative flex h-full flex-shrink-0 items-center gap-1 overflow-hidden border-r border-subtle" style={{ width: cols.name, paddingLeft: 8 + row.depth * 18, paddingRight: canWrite ? 58 : 4 }}>
                       {row.childCount > 0 || row.kind !== "touchpoint" ? (
                         <button type="button" onClick={() => toggle(row.id)} className="flex size-5 flex-shrink-0 items-center justify-center rounded-sm text-tertiary hover:bg-layer-2 hover:text-primary" aria-label="Expand or collapse">
                           <Chevron open={!collapsed.has(row.id)} />
@@ -303,7 +312,7 @@ export function WbsSchedule({ slug, plan }: { slug: string; plan: string }) {
                           <input type="color" value={row.color} onChange={(e) => run(() => wbsApi.patchPhase(scope, row.id, { color: e.target.value }))} className="size-4 flex-shrink-0 cursor-pointer rounded-sm border-0 bg-transparent p-0" title="Phase colour" />
                         ) : <span className="size-3 flex-shrink-0 rounded-sm" style={{ background: row.color }} />
                       ) : null}
-                      <EditableCell value={row.title} readOnly={!canWrite} autoEdit={autoEditId === row.id}
+                      <EditableCell title={row.title} value={row.title} readOnly={!canWrite} autoEdit={autoEditId === row.id}
                         display={<span className={cn(row.kind === "phase" ? "font-semibold text-primary" : row.kind === "epic" ? "font-medium text-primary" : "text-secondary")}>{row.title}</span>}
                         onCommit={(v) => v.trim() && (row.kind === "phase" ? run(() => wbsApi.patchPhase(scope, row.id, { name: v.trim() })) : patch({ title: v.trim() }))} />
                       {row.kind !== "phase" && node ? (
@@ -322,19 +331,19 @@ export function WbsSchedule({ slug, plan }: { slug: string; plan: string }) {
                     </div>
                     {compact ? null : (
                       <>
-                        {cell(COL.manDay, <EditableCell align="right" type="number" min={0} step={0.5} readOnly={!canEditNumbers} value={String(row.man_day)}
+                        {cell(cols.manDay, <EditableCell align="right" type="number" min={0} step={0.5} readOnly={!canEditNumbers} value={String(row.man_day)}
                           display={<span className={cn(row.rolled && "font-medium text-primary", !row.rolled && "text-secondary")}>{num(row.man_day)}</span>}
                           onCommit={(v) => Number(v) >= 0 && patch({ man_day: Number(v) })} />)}
-                        {cell(COL.effort, row.effort === null ? <span className="w-full pr-1.5 text-right text-[13px] text-tertiary">—</span> :
+                        {cell(cols.effort, row.effort === null ? <span className="w-full pr-1.5 text-right text-[13px] text-tertiary">—</span> :
                           <EditableCell align="right" type="number" min={1} max={100} step={5} readOnly={!canEditNumbers} value={String(Math.round(row.effort * 100))}
                             display={<span className="text-secondary">{Math.round(row.effort * 100)}%</span>}
                             onCommit={(v) => Number(v) > 0 && Number(v) <= 100 && patch({ effort: Number(v) / 100 })} />)}
-                        {cell(COL.lead, <span className="w-full pr-1.5 text-right text-[13px] text-secondary" title={row.lead_days ? `${row.lead_days} working days` : undefined}>{row.lead_days ? `${row.lead_days}d` : "—"}</span>)}
-                        {cell(COL.start, <EditableCell type="date" readOnly={!canEditNumbers} value={node?.start_input ?? row.start ?? ""}
+                        {cell(cols.lead, <span className="w-full pr-1.5 text-right text-[13px] text-secondary" title={row.lead_days ? `${row.lead_days} working days` : undefined}>{row.lead_days ? `${row.lead_days}d` : "—"}</span>)}
+                        {cell(cols.start, <EditableCell type="date" readOnly={!canEditNumbers} value={node?.start_input ?? row.start ?? ""}
                           display={<span className={row.start ? "text-secondary" : "text-tertiary"} title={node?.start_input && node.start_input !== row.start ? `Entered ${fmtDate(node.start_input)}, a day off: work starts on the next working day` : undefined}>{fmtDate(row.start)}{node?.start_input && node.start_input !== row.start ? " *" : ""}</span>}
                           onCommit={(v) => patch({ start_date: v || null })} />, "pl-2")}
-                        {cell(COL.who, <span className="truncate px-1.5 text-[12px] text-secondary" title={node?.assignees ?? ""}>{node?.assignees ?? "—"}</span>)}
-                        {cell(COL.status, <span className="px-1.5"><StatusChip node={node} row={row} /></span>)}
+                                                {cell(cols.who, <AssigneeAvatars people={node?.assignees ?? []} />)}
+                        {cell(cols.status, <span className="px-1.5"><StatusChip node={node} row={row} /></span>)}
                       </>
                     )}
                   </div>

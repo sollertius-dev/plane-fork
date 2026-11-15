@@ -11,10 +11,11 @@ export const toDay = (iso: string): number => Math.floor(Date.parse(`${iso}T00:0
 export const fromDay = (day: number): string => new Date(day * DAY_MS).toISOString().slice(0, 10);
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+// DD/MM/YY, short enough for a narrow column
 export const fmtDate = (iso: string | null): string => {
   if (!iso) return "—";
   const [y, m, d] = iso.split("-");
-  return `${Number(d)} ${MONTHS[Number(m) - 1]} ${y.slice(2)}`;
+  return `${d}/${m}/${y.slice(2)}`;
 };
 export const monthLabel = (day: number): string => {
   const d = new Date(day * DAY_MS);
