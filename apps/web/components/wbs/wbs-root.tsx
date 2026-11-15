@@ -215,9 +215,10 @@ export function WbsSchedule({ slug, plan }: { slug: string; plan: string }) {
         <button type="button" className={btn} onClick={() => setCompact((v) => !v)}>{compact ? "Show details" : "Hide details"}</button>
         {msForm ? (
           <span className="flex items-center gap-1.5">
-            <input autoFocus value={msForm.name} onChange={(e) => setMsForm({ ...msForm, name: e.target.value })} onKeyDown={(e) => e.key === "Enter" && addMilestone()} placeholder="Milestone name" className="h-7 w-44 rounded-sm border border-subtle bg-surface-1 px-2 text-[12px] text-primary outline-none focus:border-accent-strong" />
-            <input type="date" value={msForm.day} onChange={(e) => setMsForm({ ...msForm, day: e.target.value })} className="h-7 rounded-sm border border-subtle bg-surface-1 px-1.5 text-[12px] text-primary outline-none focus:border-accent-strong" />
+            <input autoFocus value={msForm.name} onChange={(e) => setMsForm({ ...msForm, name: e.target.value })} onKeyDown={(e) => { if (e.key === "Enter") void addMilestone(); if (e.key === "Escape") setMsForm(null); }} placeholder="Milestone name" className="h-7 w-44 rounded-sm border border-subtle bg-surface-1 px-2 text-[12px] text-primary outline-none focus:border-accent-strong" />
+            <input type="date" value={msForm.day} onKeyDown={(e) => e.key === "Escape" && setMsForm(null)} onChange={(e) => setMsForm({ ...msForm, day: e.target.value })} className="h-7 rounded-sm border border-subtle bg-surface-1 px-1.5 text-[12px] text-primary outline-none focus:border-accent-strong" />
             <button type="button" className={cn(btn, "bg-accent-primary text-on-color hover:bg-accent-primary")} onClick={addMilestone}>Add</button>
+            <button type="button" className={btn} onClick={() => setMsForm(null)} title="Close without adding (Esc)">Cancel</button>
           </span>
         ) : null}
         {error ? (
