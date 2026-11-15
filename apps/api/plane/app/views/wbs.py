@@ -361,6 +361,8 @@ class WbsTreeEndpoint(BaseAPIView):
                         "id": str(l.issue_id), "ref": f"{l.issue.project.identifier}-{l.issue.sequence_id}",
                         "name": l.issue.name, "status": l.issue.state.name if l.issue.state_id else None,
                         "status_group": l.issue.state.group if l.issue.state_id else None,
+                        "start": l.issue.start_date, "end": l.issue.target_date,
+                        "assignees": sorted(assignees.get(l.issue_id, {}).values(), key=lambda u: (u["name"] or "").lower()),
                     }
                     for l in node_links
                 ],

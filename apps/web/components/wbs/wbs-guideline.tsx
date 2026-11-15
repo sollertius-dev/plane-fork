@@ -121,6 +121,7 @@ export function WbsGuideline() {
           <Li>The <B>Status</B> of the row comes from its work items: <B>Done</B> when all are completed, <B>In progress</B> when at least one has started or is done, <B>Not started</B> otherwise, with a counter such as 2/5. Cancelled items are not counted.</Li>
           <Li>The <B>Assignee</B> is everyone assigned to the linked work items.</Li>
           <Li>The key is a link: it opens the work item in Plane.</Li>
+          <Li><B>See what is linked:</B> the arrow in front of an epic or touch point opens its work items as grey rows underneath, with their key, name, assignees and Plane state. A thin outlined bar shows the work item's own start and due dates in Plane, if it has them, so that you can compare the plan with what the team really scheduled. Point at one of these rows and press ✕ to unlink it. A row with no children and no work items has no arrow. <B>Expand all</B> opens everything.</Li>
           <Li>On an epic that has touch points, the status column shows how many touch points are done. Link work items to the touch points, not to such an epic.</Li>
         </ul>
 
